@@ -1,0 +1,15 @@
+# Render 部署配置
+# 在 render.com 用 GitHub 登录后, New + -> Blueprints -> 选本仓库, Render 会自动按此配置部署
+services:
+  - type: web
+    name: campus-bus
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/state
+    envVars:
+      - key: NODE_ENV
+        value: production

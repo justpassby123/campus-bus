@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>南审校园公交 - 司机端</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <h1>司机端 · <span id="header-bus">#01</span></h1>
+      <span class="badge" id="header-status">运营中</span>
+    </header>
+
+    <div class="app-content">
+
+      <!-- ========== TAB 1: 行车 ========== -->
+      <div id="tab-drive" class="tab-pane">
+        <!-- 车队总览 - 9格 -->
+        <div class="card">
+          <div class="card-title">
+            <span>车队总览</span>
+            <span class="more" id="d-fleet-sub">加载中...</span>
+          </div>
+          <div class="grid-3" style="gap: 6px;" id="d-fleet-grid"></div>
+        </div>
+
+        <!-- 休息区面板 (仅在resting状态显示) -->
+        <div id="d-rest-panel" class="card hidden" style="background: var(--gray-50); border-color: var(--gray-300);">
+          <div class="card-title">
+            <span>🅿️ 沁园休息区</span>
+            <span class="more" id="d-rest-laps">完成 1 圈</span>
+          </div>
+          <div class="text-sm text-2 mb-3">司机休息完成后，请选择下一趟发车线路</div>
+          <div class="grid-2" style="gap: 8px;">
+            <button class="btn btn-lg" onclick="selectRoute(1)">一线 · 顺时针</button>
+            <button class="btn btn-lg btn-outline" onclick="selectRoute(2)">二线 · 顺时针</button>
+          </div>
+        </div>
+
+        <!-- 当前车辆 -->
+        <div class="card">
+          <div class="flex gap-3" style="align-items: center;">
+            <div style="font-size: 32px;">🚌</div>
+            <div class="flex-1">
+              <div class="text-lg font-bold" id="d-bus-id">车辆 #01</div>
+              <div class="text-sm text-2" id="d-driver">司机：张建国</div>
+              <div class="text-sm" style="margin-top: 4px;">
+                <span class="tag tag-accent" id="d-route-name">一线 · 顺时针</span>
+                <span class="tag tag-success" id="d-status-info">运营中</span>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top: 10px; padding: 10px 12px; background: var(--gray-50); border-radius: 6px; display: flex; align-items: center; gap: 8px;">
+            <span>📍</span>
+            <div class="text-sm">当前：<b id="d-current-stop">沁园</b> → 下一站 <b id="d-next-stop">中和楼</b></div>
+          </div>
+        </div>
+
+        <!-- 地图 -->
+        <div class="card">
+          <div class="card-title">
+            <span>环线地图</span>
+            <span class="more" id="d-period">平峰</span>
+          </div>
+          <div id="map-driver" class="map-canvas"></div>
+          <div class="text-sm text-2" style="margin-top: 8px;">● 运营车辆 · P 休息区</div>
+        </div>
+
+        <!-- 候车需求 -->
+        <div class="card">
+          <div class="card-title">
+            <span>站点候车 <span class="tag tag-danger" id="d-demand-count">0 人</span></span>
+            <span class="more">按优先级排序</span>
+          </div>
+          <div id="d-demand-list">
+            <div class="text-2 text-center" style="padding: 16px;">暂无等车需求</div>
+          </div>
+        </div>
+
+        <!-- 快捷操作 -->
+        <div class="card">
+          <div class="card-title">快捷操作</div>
+          <div class="grid-2" style="gap: 10px;">
+            <button class="btn" id="btn-arrive" style="padding: 16px;">✓ 到站确认</button>
+            <button class="btn btn-outline" id="btn-temp-stop" style="padding: 16px;">⏸ 临时停靠</button>
+            <button class="btn btn-outline" id="btn-status" style="padding: 12px;">🔄 运营/待命</button>
+            <button class="btn btn-outline-danger" id="btn-exception" style="padding: 12px;">⚠ 异常上报</button>
+          </div>
+          <button class="btn btn-block" id="btn-emergency" style="padding: 14px; margin-top: 12px; background: #DC2626; border-color: #DC2626;">📞 紧急联系调度</button>
+        </div>
+
+        <!-- 拥挤度 -->
+        <div class="card">
+          <div class="card-title">车厢拥挤度 <span class="more">根据载客量自动计算</span></div>
+          <div class="grid-3" style="gap: 8px;" id="d-crowd-group">
+            <button class="btn btn-outline" data-crowd="empty" style="padding: 12px;">🟢 空载</button>
+            <button class="btn" data-crowd="medium" style="padding: 12px;">🟡 适中</button>
+            <button class="btn btn-outline" data-crowd="crowded" style="padding: 12px;">🔴 拥挤</button>
+          </div>
+          <div class="text-sm text-2 mt-3">当前载客 <b id="d-onboard">0</b> 人 · 核定 <b id="d-capacity">40</b> 人</div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 2: 行程 ========== -->
+      <div id="tab-route" class="tab-pane hidden">
+        <div class="card">
+          <div class="card-title">环线 16 站 · 当前线路</div>
+          <div id="r-stops-list"></div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 3: 异常调度 ========== -->
+      <div id="tab-exception" class="tab-pane hidden">
+        <div class="card">
+          <div class="card-title">自主申报</div>
+          <div class="text-sm text-2 mb-3">提交后将自动同步到学生端公告</div>
+          <div class="form-group">
+            <label class="form-label">异常类型</label>
+            <select class="select" id="ex-type">
+              <option value="改道">改道施工</option>
+              <option value="加站">临时加站</option>
+              <option value="停运">恶劣天气停运</option>
+              <option value="故障">车辆故障</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">情况说明</label>
+            <textarea class="textarea" id="ex-desc" placeholder="例如：南门北站施工，临时改道"></textarea>
+          </div>
+          <button class="btn btn-block" id="btn-ex-submit">提交申报</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">已提交记录</div>
+          <div id="ex-history" class="text-2 text-sm">暂无记录</div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 4: 考勤排班 ========== -->
+      <div id="tab-attendance" class="tab-pane hidden">
+        <div class="card">
+          <div class="card-title"><span>今日打卡</span><span class="tag tag-success" id="a-punch-status">已上班</span></div>
+          <div class="text-sm text-2 mb-2">车场定位 · 自动打卡</div>
+          <div class="text-2xl font-bold mb-2" id="a-punch-time">07:50</div>
+          <div class="text-sm text-2">位置：沁园休息区</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">本月统计 · <span id="a-bus-label">#01</span></div>
+          <div class="grid-2" style="gap: 10px;">
+            <div style="padding: 12px; background: var(--gray-50); border-radius: 6px;">
+              <div class="text-sm text-2">总趟数</div>
+              <div class="text-2xl font-bold" id="a-stats-trips">0</div>
+            </div>
+            <div style="padding: 12px; background: var(--gray-50); border-radius: 6px;">
+              <div class="text-sm text-2">完成圈数</div>
+              <div class="text-2xl font-bold" id="a-stats-laps">0</div>
+            </div>
+            <div style="padding: 12px; background: var(--gray-50); border-radius: 6px;">
+              <div class="text-sm text-2">累计运载</div>
+              <div class="text-2xl font-bold" id="a-stats-served">0</div>
+            </div>
+            <div style="padding: 12px; background: var(--gray-50); border-radius: 6px;">
+              <div class="text-sm text-2">异常次数</div>
+              <div class="text-2xl font-bold" id="a-stats-exceptions">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 5: 我的 ========== -->
+      <div id="tab-me" class="tab-pane hidden">
+        <div class="card">
+          <div class="flex gap-3" style="align-items: center;">
+            <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--gray-100); display: flex; align-items: center; justify-content: center; font-size: 24px;">🧑‍✈️</div>
+            <div class="flex-1">
+              <div class="text-lg font-bold" id="me-driver">张建国</div>
+              <div class="text-sm text-2" id="me-bus">绑定车辆: #01</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">学生反馈与回复</div>
+          <div id="me-feedbacks">加载中...</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">⚙️ 服务器设置</div>
+          <div class="text-sm text-2 mb-2">当前: <code id="d-api-status" style="font-size:11px;">检测中...</code></div>
+          <button class="btn btn-outline btn-block btn-sm" onclick="showApiSettings()">修改服务器地址</button>
+        </div>
+      </div>
+
+    </div>
+
+    <nav class="tab-bar">
+      <button class="tab-item active" data-tab="drive"><span class="tab-icon">🚐</span><span>行车</span></button>
+      <button class="tab-item" data-tab="route"><span class="tab-icon">📋</span><span>行程</span></button>
+      <button class="tab-item" data-tab="exception"><span class="tab-icon">⚠️</span><span>异常</span></button>
+      <button class="tab-item" data-tab="attendance"><span class="tab-icon">📅</span><span>考勤</span></button>
+      <button class="tab-item" data-tab="me"><span class="tab-icon">👤</span><span>我的</span></button>
+    </nav>
+  </div>
+
+  <script>
+    (function () {
+      var base = (location.protocol === 'file:') ? 'http://localhost:3000' : '';
+      var s = document.createElement('script');
+      s.src = base + '/socket.io/socket.io.js';
+      document.head.appendChild(s);
+    })();
+  </script>
+  <script src="js/common.js"></script>
+  <script src="js/driver.js"></script>
+</body>
+</html>

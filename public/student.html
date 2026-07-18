@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>南审校园公交 - 学生端</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <h1>校园公交 · 学生端</h1>
+      <span class="badge" id="header-period">平峰</span>
+    </header>
+
+    <div class="app-content">
+
+      <!-- ========== TAB 1: 首页 ========== -->
+      <div id="tab-home" class="tab-pane">
+        <!-- 运营概况 - 简洁卡片 -->
+        <div class="card">
+          <div class="flex gap-3" style="align-items: center;">
+            <div style="font-size: 32px;">🚌</div>
+            <div class="flex-1">
+              <div class="text-lg font-bold">校园公交运行中</div>
+              <div class="text-sm text-2" id="s-fleet-sub">当前 0 辆车在校内运行</div>
+            </div>
+          </div>
+          <div class="text-sm text-2 mt-3">首班 08:00 · 末班 21:30 · 约 10 分钟一班 · 全程约 25 分钟</div>
+        </div>
+
+        <!-- 高峰提示 -->
+        <div id="s-peak-banner" class="card hidden" style="background: #FEF3C7; border-color: #FCD34D;">
+          <div class="flex gap-2" style="align-items: center;">
+            <span style="font-size: 22px;">⏰</span>
+            <div class="flex-1">
+              <div class="font-bold">高峰时段</div>
+              <div class="text-sm text-2" id="s-peak-text">候车时间可能延长</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 地图 -->
+        <div class="card">
+          <div class="card-title">
+            <span>实时位置</span>
+            <span class="more">● 运营车辆</span>
+          </div>
+          <div id="map-student" class="map-canvas"></div>
+          <div class="text-sm text-2" style="margin-top: 8px;">● 数字 = 车号 · 红/橙点 = 有候车人数</div>
+        </div>
+
+        <!-- 一键上报 - 突出入口 -->
+        <div class="card" style="background: #F9FAFB; border-style: dashed;">
+          <div class="card-title">🚏 一键上报等车</div>
+          <input class="input" id="search-input" placeholder="输入站点名，如：中和楼、沁园" />
+          <div id="search-results" class="mt-3"></div>
+        </div>
+
+        <!-- 快捷入口 -->
+        <div class="card">
+          <div class="card-title">常用功能</div>
+          <div class="grid-4">
+            <a class="quick-btn" onclick="switchTab('route')"><div class="qb-icon">📋</div><div class="qb-text">线路</div></a>
+            <a class="quick-btn" onclick="switchTab('service')"><div class="qb-icon">🛠</div><div class="qb-text">反馈</div></a>
+            <a class="quick-btn" onclick="switchTab('service')"><div class="qb-icon">🔍</div><div class="qb-text">失物</div></a>
+            <a class="quick-btn" onclick="switchTab('notice')"><div class="qb-icon">📢</div><div class="qb-text">公告</div></a>
+          </div>
+        </div>
+
+        <!-- 运行车辆列表 -->
+        <div class="card">
+          <div class="card-title">运行车辆 <span class="more" id="s-bus-count">0 辆</span></div>
+          <div id="s-bus-list"></div>
+        </div>
+
+        <!-- 置顶公告 -->
+        <div id="s-notice-top"></div>
+      </div>
+
+      <!-- ========== TAB 2: 线路 ========== -->
+      <div id="tab-route" class="tab-pane hidden">
+        <div class="card">
+          <div class="grid-2" style="gap: 8px;">
+            <button class="btn route-btn active" data-route="1">一线</button>
+            <button class="btn btn-outline route-btn" data-route="2">二线</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="text-sm text-2" id="rt-current">点击站点一键上报等车</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">环线站点 <span class="more">点击站点上报</span></div>
+          <div id="rt-stops-list"></div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 3: 服务 ========== -->
+      <div id="tab-service" class="tab-pane hidden">
+        <div class="card">
+          <div class="card-title">🔍 失物招领 <span class="more" id="lf-count">0 条</span></div>
+          <div id="lf-list"></div>
+          <button class="btn btn-outline btn-block mt-3" onclick="showLostFoundForm()">+ 发布失物/拾物</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🛠 反馈上报</div>
+          <div class="form-group">
+            <label class="form-label">问题类型</label>
+            <select class="select" id="fb-type">
+              <option value="晚点">车辆晚点</option>
+              <option value="卫生">车内卫生</option>
+              <option value="设施">站点设施损坏</option>
+              <option value="服务">服务态度</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">问题描述</label>
+            <textarea class="textarea" id="fb-content" placeholder="请详细描述问题..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">联系方式 (可选)</label>
+            <input class="input" id="fb-contact" placeholder="手机号/学号" />
+          </div>
+          <button class="btn btn-block" id="btn-fb-submit">提交反馈</button>
+          <div class="text-sm text-2 mt-2" style="text-align: center;">司机端会尽快处理</div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 4: 公告 ========== -->
+      <div id="tab-notice" class="tab-pane hidden">
+        <div class="card">
+          <div class="card-title">📢 公告</div>
+          <div id="nt-list"></div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 5: 我的 ========== -->
+      <div id="tab-me" class="tab-pane hidden">
+        <div class="card">
+          <div class="flex gap-3" style="align-items: center;">
+            <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--gray-100); display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>
+            <div class="flex-1">
+              <div class="text-lg font-bold">同学</div>
+              <div class="text-sm text-2">南审校园公交 · 学生用户</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📜 反馈记录</div>
+          <div id="me-fb-history" class="text-2 text-sm">暂无反馈</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🚌 车队信息</div>
+          <div id="me-fleet" class="text-2 text-sm">加载中...</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">关于</div>
+          <div class="text-2 text-sm">v1.0 · 南审校园公交系统 · Demo</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">⚙️ 服务器设置</div>
+          <div class="text-sm text-2 mb-2">当前: <code id="s-api-status" style="font-size:11px;">检测中...</code></div>
+          <button class="btn btn-outline btn-block btn-sm" onclick="showApiSettings()">修改服务器地址</button>
+        </div>
+      </div>
+
+    </div>
+
+    <nav class="tab-bar">
+      <button class="tab-item active" data-tab="home"><span class="tab-icon">🏠</span><span>首页</span></button>
+      <button class="tab-item" data-tab="route"><span class="tab-icon">📋</span><span>线路</span></button>
+      <button class="tab-item" data-tab="service"><span class="tab-icon">🛠</span><span>服务</span></button>
+      <button class="tab-item" data-tab="notice"><span class="tab-icon">📢</span><span>公告</span></button>
+      <button class="tab-item" data-tab="me"><span class="tab-icon">👤</span><span>我的</span></button>
+    </nav>
+  </div>
+
+  <script>
+    (function () {
+      var base = (location.protocol === 'file:') ? 'http://localhost:3000' : '';
+      var s = document.createElement('script');
+      s.src = base + '/socket.io/socket.io.js';
+      document.head.appendChild(s);
+    })();
+  </script>
+  <script src="js/common.js"></script>
+  <script src="js/student.js"></script>
+</body>
+</html>

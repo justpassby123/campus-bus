@@ -25,11 +25,13 @@ window.App = {
         if (typeof window.onStateUpdate === 'function') window.onStateUpdate(s);
       });
       this.socket.on('demand:new', (d) => {
-        const tip = d.busId ? `${d.stopName} 有 ${d.count} 人等车，最近车 ${d.busId} 约 ${d.eta} 分钟` : `${d.stopName} 有 ${d.count} 人等车`;
+        const rn = d.routeName ? d.routeName + ' ' : '';
+        const tip = d.busId ? `${d.stopName} ${rn}有 ${d.count} 人等车，最近 ${d.busId} 约 ${d.eta} 分钟` : `${d.stopName} ${rn}有 ${d.count} 人等车`;
         this.toast(tip);
+        if (typeof window.onDemandNew === 'function') window.onDemandNew(d);
       });
       this.socket.on('demand:resolved', (d) => {
-        this.toast(`${d.busId || '公交'} 已到 ${d.stopName}，送达 ${d.served} 人`);
+        if (typeof window.onDemandResolved === 'function') window.onDemandResolved(d);
       });
       this.socket.on('bus:resting', (d) => {
         this.toast(`${d.busId} 已完成 ${d.lapsCompleted} 圈，到达沁园休息区`);

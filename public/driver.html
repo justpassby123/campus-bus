@@ -32,7 +32,6 @@
             <span>🅿️ 沁园休息区</span>
             <span class="more" id="d-rest-laps">完成 1 圈</span>
           </div>
-          <div class="text-sm text-2 mb-3">司机休息完成后，请选择下一趟发车线路</div>
           <div class="grid-2" style="gap: 8px;">
             <button class="btn btn-lg" onclick="selectRoute(1)">一线 · 顺时针</button>
             <button class="btn btn-lg btn-outline" onclick="selectRoute(2)">二线 · 顺时针</button>
@@ -65,14 +64,12 @@
             <span class="more" id="d-period">平峰</span>
           </div>
           <div id="map-driver" class="map-canvas"></div>
-          <div class="text-sm text-2" style="margin-top: 8px;">● 运营车辆 · P 休息区</div>
         </div>
 
         <!-- 候车需求 -->
         <div class="card">
           <div class="card-title">
             <span>站点候车 <span class="tag tag-danger" id="d-demand-count">0 人</span></span>
-            <span class="more">按优先级排序</span>
           </div>
           <div id="d-demand-list">
             <div class="text-2 text-center" style="padding: 16px;">暂无等车需求</div>
@@ -93,13 +90,13 @@
 
         <!-- 拥挤度 -->
         <div class="card">
-          <div class="card-title">车厢拥挤度 <span class="more">根据载客量自动计算</span></div>
+          <div class="card-title">车厢拥挤度</div>
           <div class="grid-3" style="gap: 8px;" id="d-crowd-group">
             <button class="btn btn-outline" data-crowd="empty" style="padding: 12px;">🟢 空载</button>
             <button class="btn" data-crowd="medium" style="padding: 12px;">🟡 适中</button>
             <button class="btn btn-outline" data-crowd="crowded" style="padding: 12px;">🔴 拥挤</button>
           </div>
-          <div class="text-sm text-2 mt-3">当前载客 <b id="d-onboard">0</b> 人 · 核定 <b id="d-capacity">40</b> 人</div>
+          <div class="text-sm text-2 mt-3">当前载客 <b id="d-onboard">0</b> 人 · 核定 <b id="d-capacity">22</b> 人</div>
         </div>
       </div>
 
@@ -111,7 +108,37 @@
         </div>
       </div>
 
-      <!-- ========== TAB 3: 异常调度 ========== -->
+      <!-- ========== TAB 3: 调度台 ========== -->
+      <div id="tab-dispatch" class="tab-pane hidden">
+        <!-- 智能建议 / 需求榜 -->
+        <div class="card">
+          <div class="card-title">
+            <span>候车压力榜</span>
+            <span class="more" id="dp-headway">每线约 9 分一班</span>
+          </div>
+          <div id="dp-suggest">
+            <div class="text-2 text-center" style="padding: 12px;">加载中...</div>
+          </div>
+        </div>
+
+        <!-- 可派车辆 -->
+        <div class="card">
+          <div class="card-title">可增发车辆（沁园休息区）</div>
+          <div id="dp-available">
+            <div class="text-2 text-center" style="padding: 12px;">加载中...</div>
+          </div>
+        </div>
+
+        <!-- 运营中车辆 -->
+        <div class="card">
+          <div class="card-title">运营中车辆（可召回）</div>
+          <div id="dp-operating">
+            <div class="text-2 text-center" style="padding: 12px;">加载中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== TAB 4: 异常调度 ========== -->
       <div id="tab-exception" class="tab-pane hidden">
         <div class="card">
           <div class="card-title">自主申报</div>
@@ -168,6 +195,13 @@
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-title">车队排班表</div>
+          <div id="a-shifts">
+            <div class="text-2 text-center" style="padding: 12px;">加载中...</div>
+          </div>
+        </div>
       </div>
 
       <!-- ========== TAB 5: 我的 ========== -->
@@ -198,6 +232,7 @@
 
     <nav class="tab-bar">
       <button class="tab-item active" data-tab="drive"><span class="tab-icon">🚐</span><span>行车</span></button>
+      <button class="tab-item" data-tab="dispatch"><span class="tab-icon">🎛️</span><span>调度</span></button>
       <button class="tab-item" data-tab="route"><span class="tab-icon">📋</span><span>行程</span></button>
       <button class="tab-item" data-tab="exception"><span class="tab-icon">⚠️</span><span>异常</span></button>
       <button class="tab-item" data-tab="attendance"><span class="tab-icon">📅</span><span>考勤</span></button>

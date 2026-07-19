@@ -26,7 +26,7 @@
               <div class="text-sm text-2" id="s-fleet-sub">当前 0 辆车在校内运行</div>
             </div>
           </div>
-          <div class="text-sm text-2 mt-3">首班 08:00 · 末班 21:30 · 约 10 分钟一班 · 全程约 25 分钟</div>
+          <div class="text-sm text-2 mt-3">首班 08:00 · 末班 21:30 · 约 8-10 分钟一班 · 全程约 25-30 分钟</div>
         </div>
 
         <!-- 高峰提示 -->
@@ -40,14 +40,15 @@
           </div>
         </div>
 
+        <!-- 我的等待卡 -->
+        <div id="s-my-waits"></div>
+
         <!-- 地图 -->
         <div class="card">
           <div class="card-title">
             <span>实时位置</span>
-            <span class="more">● 运营车辆</span>
           </div>
           <div id="map-student" class="map-canvas"></div>
-          <div class="text-sm text-2" style="margin-top: 8px;">● 数字 = 车号 · 红/橙点 = 有候车人数</div>
         </div>
 
         <!-- 一键上报 - 突出入口 -->
@@ -92,7 +93,7 @@
         </div>
 
         <div class="card">
-          <div class="card-title">环线站点 <span class="more">点击站点上报</span></div>
+          <div class="card-title">环线站点</div>
           <div id="rt-stops-list"></div>
         </div>
       </div>
@@ -126,7 +127,6 @@
             <input class="input" id="fb-contact" placeholder="手机号/学号" />
           </div>
           <button class="btn btn-block" id="btn-fb-submit">提交反馈</button>
-          <div class="text-sm text-2 mt-2" style="text-align: center;">司机端会尽快处理</div>
         </div>
       </div>
 

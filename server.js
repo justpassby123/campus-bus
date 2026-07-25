@@ -119,8 +119,14 @@ const PEAK_WINDOWS = [
 ];
 let manualPeakUntil = 0;  // 演示高峰模式: 临时强制高峰(10分钟有效)
 
+// 北京时间 (UTC+8) — Render 容器默认 UTC, 高峰判定必须按北京时间
+function bjNow() {
+  const d = new Date();
+  return new Date(d.getTime() + d.getTimezoneOffset() * 60000 + 8 * 3600000);
+}
+
 function isPeakNow() {
-  const now = new Date();
+  const now = bjNow();
   const hm = now.getHours() * 60 + now.getMinutes();
   const clock = PEAK_WINDOWS.find(w => {
     const [sh, sm] = w.start.split(':').map(Number);
@@ -232,7 +238,7 @@ function haversine(lat1, lng1, lat2, lng2) {
 
 function getTimePeriod() {
   if (isPeakNow().active) return 'peak';
-  const h = new Date().getHours();
+  const h = bjNow().getHours();
   if (h < 8 || h >= 21.5) return 'off';
   return 'normal';
 }

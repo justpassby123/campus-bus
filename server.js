@@ -1,5 +1,5 @@
 // ============================================================
-//  南审校园公交 - 后端服务 v5
+//  南审校园公交 - 后端服务 v7
 //  Node.js + Express + Socket.io
 //  16站 / 2线 / 9车(1备班) / 沁园休息区
 //  v5 变更:
@@ -261,6 +261,36 @@ function recordWait(stopId, routeId, minutes) {
   if (!state.waitStats[key]) state.waitStats[key] = { total: 0, count: 0 };
   state.waitStats[key].total += minutes;
   state.waitStats[key].count += 1;
+}
+
+// =========================================================
+//  演示数据自动注入 (启动即填充)
+//  - 各站点按线路预置候车人数, 保证评委/视频一打开就有内容
+//  - 预置候车时长统计样本, "数据驱动"亮点一上来就可见
+// =========================================================
+function seedDemoData() {
+  // 预置候车需求 (按线路二维)
+  const seedDemands = [
+    { stopId: 3,  routeId: 1, count: 3, minAgo: 4 },  // 南门北 一线
+    { stopId: 3,  routeId: 2, count: 2, minAgo: 3 },  // 南门北 二线
+    { stopId: 2,  routeId: 1, count: 5, minAgo: 6 },  // 中和楼 一线
+    { stopId: 4,  routeId: 1, count: 2, minAgo: 2 },  // 敏行楼 一线
+    { stopId: 15, routeId: 2, count: 3, minAgo: 5 },  // 竞秀楼 二线
+    { stopId: 9,  routeId: 1, count: 2, minAgo: 3 }   // 泽园餐厅 一线
+  ];
+  seedDemands.forEach(({ stopId, routeId, count, minAgo }) => {
+    const d = ensureDemand(stopId, routeId);
+    d.count = count;
+    d.firstDemandAt = Date.now() - minAgo * 60000;
+  });
+  // 预置统计样本: 累计 132 次接客 / 424 分钟 → 全校均候 ≈ 3.2 分
+  const preset = [
+    [2,1,58,18],[2,2,45,14],[3,1,64,20],[3,2,38,12],[4,1,45,14],
+    [9,1,38,12],[15,2,52,16],[12,1,32,10],[13,2,26,8],[16,1,26,8]
+  ];
+  preset.forEach(([sid, rid, total, cnt]) => {
+    state.waitStats[sid + '_' + rid] = { total, count: cnt };
+  });
 }
 
 // 可增发的待命/备班车 (优先同线路)
@@ -666,6 +696,28 @@ app.post('/api/peak/toggle', (req, res) => {
   res.json({ success: true, active: manualPeakUntil > Date.now() });
 });
 
+// 一键演示: 晚课放学高峰 (中和楼/敏行楼/竞秀楼 并发需求 + 强制高峰)
+// 用于答辩/视频快速进入高光剧情, 无需逐个手动上报
+app.post('/api/demo/evening-rush', (req, res) => {
+  manualPeakUntil = Date.now() + 10 * 60 * 1000;   // 强制高峰 10 分钟
+  const burst = [
+    { stopId: 2,  routeId: 1, count: 12 },  // 中和楼 一线
+    { stopId: 2,  routeId: 2, count: 10 },  // 中和楼 二线
+    { stopId: 4,  routeId: 1, count: 8 },   // 敏行楼 一线
+    { stopId: 15, routeId: 2, count: 9 },   // 竞秀楼 二线
+    { stopId: 3,  routeId: 1, count: 7 }    // 南门北 一线
+  ];
+  const generated = [];
+  burst.forEach(({ stopId, routeId, count }) => {
+    const d = ensureDemand(stopId, routeId);
+    d.count = count;
+    d.firstDemandAt = Date.now();
+    generated.push({ stopId, stopName: stopById[stopId].name, routeId, count });
+  });
+  broadcastState();
+  res.json({ success: true, peak: true, generated });
+});
+
 // 清空
 app.post('/api/clear', (req, res) => {
   state.demands = {};
@@ -744,6 +796,7 @@ io.on('connection', (socket) => {
 // =========================================================
 //  定时器
 // =========================================================
+seedDemoData();   // 启动即注入演示数据, 保证一打开就有内容
 setInterval(() => {
   operatingBuses().forEach(tickBus);
   broadcastState();
@@ -751,7 +804,8 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚌  南审校园公交系统 v5 已启动`);
+  console.log(`\n🚌  南审校园公交系统 v7 已启动`);
+  console.log(`   ✔ 演示数据已自动注入（候车 + 统计样本）`);
   console.log(`   学生端:   http://localhost:${PORT}/student.html`);
   console.log(`   司机端:   http://localhost:${PORT}/driver.html\n`);
 });

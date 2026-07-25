@@ -117,7 +117,10 @@
               <div class="font-bold">演示高峰模式</div>
               <div class="text-sm text-2">模拟 11:50 午放学 / 20:50 晚课放学 压力</div>
             </div>
-            <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">🔴 开启演示高峰</button>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">🔴 开启演示高峰</button>
+              <button class="btn btn-sm" id="btn-demo-rush" onclick="demoEveningRush()" style="background:#EA580C; border-color:#EA580C; color:#fff;">🌆 一键晚课放学</button>
+            </div>
           </div>
         </div>
 

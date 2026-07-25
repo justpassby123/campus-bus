@@ -333,6 +333,17 @@ function togglePeak() {
     });
 }
 
+// 一键演示晚课放学 (中和楼/敏行楼/竞秀楼 并发高峰 + 强制高峰)
+function demoEveningRush() {
+  fetch(API_BASE + '/api/demo/evening-rush', { method: 'POST' })
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        App.toast('🌆 已模拟晚课放学高峰：中和楼/敏行楼/竞秀楼并发候车', 3500);
+        renderDispatch();
+      } else App.toast('演示注入失败');
+    });
+}
+
 function recallBus(id) {
   if (!confirm('将 ' + id + ' 召回沁园休息区？')) return;
   fetch(API_BASE + '/api/bus/recall', {

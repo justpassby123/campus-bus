@@ -189,6 +189,7 @@ const busById = Object.fromEntries(buses.map(b => [b.id, b]));
 // =========================================================
 const state = {
   demands: {},
+  waitStats: {},   // 候车时长统计: key=`${stopId}_${routeId}` => {total(分钟), count}
   lostFound: [
     { id: 1, type: '校园卡', desc: '蓝色校园卡，沁园站捡到', contact: '18912345678', time: '2026-07-18 14:30', status: 'open' }
   ],
@@ -254,6 +255,14 @@ function operatingBuses() {
   return buses.filter(b => b.status === 'operating');
 }
 
+// 候车时长统计: 每次成功接客记录候车分钟数
+function recordWait(stopId, routeId, minutes) {
+  const key = stopId + '_' + routeId;
+  if (!state.waitStats[key]) state.waitStats[key] = { total: 0, count: 0 };
+  state.waitStats[key].total += minutes;
+  state.waitStats[key].count += 1;
+}
+
 // 可增发的待命/备班车 (优先同线路)
 function standbyBusForRoute(routeId) {
   return buses.find(b => ['standby', 'backup', 'resting'].includes(b.status) && b.routeId === routeId)
@@ -291,11 +300,28 @@ function serveStop(bus, stopId) {
       bus.totalServed += served;
       bus.totalTrips++;
       d.count -= served;
-      const remaining = d.count;
+      const remaining = d.count;                 // 没接走、需等下一班的人数
+      const waitDuration = (Date.now() - d.firstDemandAt) / 60000;
+      recordWait(stopId, bus.routeId, waitDuration);
+      // 满载滞留: 计算下一班(排除本车)最近同线车 ETA, 给学生端提示
+      let nextBusId = null, nextEta = 0;
+      if (remaining > 0) {
+        const stop = stopById[stopId];
+        let best = null, bd = Infinity;
+        for (const b of operatingBuses()) {
+          if (b.routeId !== bus.routeId || b.id === bus.id) continue;
+          const dd = haversine(b.lat, b.lng, stop.lat, stop.lng);
+          if (dd < bd) { bd = dd; best = b; }
+        }
+        if (best) { nextBusId = best.id; nextEta = Math.max(1, Math.round(bd / 20 * 60)); }
+      }
       if (d.count <= 0) clearDemand(stopId, bus.routeId);
       io.emit('demand:resolved', {
         stopId, stopName: stopById[stopId].name, routeId: bus.routeId,
-        routeName: routeById[bus.routeId].name, served, busId: bus.id, remaining
+        routeName: routeById[bus.routeId].name, served, busId: bus.id, remaining,
+        waitDuration: Math.round(waitDuration * 10) / 10,
+        overflow: remaining > 0,
+        nextBusId, nextEta
       });
     }
   }
@@ -323,11 +349,14 @@ function calculateSchedule() {
       else priority = 'low';
       const eta = nb ? Math.max(1, Math.round(distance / 20 * 60)) : 0;
       const sb = standbyBusForRoute(routeId);
+      const ws = state.waitStats[s.id + '_' + routeId];
+      const avgWait = ws && ws.count ? Math.round(ws.total / ws.count * 10) / 10 : 0;
       result.push({
         id: s.id, name: s.name, lat: s.lat, lng: s.lng,
         routeId, routeName: routeById[routeId].name,
         waitCount: d.count,
         waitDuration: Math.round(waitDuration * 10) / 10,
+        avgWait,
         distance: Math.round(distance * 100) / 100,
         score: Math.round(score * 10) / 10,
         priority, eta,
@@ -351,10 +380,16 @@ function getFullState() {
     const w1 = stopWait(s.id, 1), w2 = stopWait(s.id, 2);
     const firsts = [getDemand(s.id, 1), getDemand(s.id, 2)].filter(Boolean).map(d => d.firstDemandAt);
     const first = firsts.length ? Math.min(...firsts) : 0;
+    const ws1 = state.waitStats[s.id + '_1'], ws2 = state.waitStats[s.id + '_2'];
+    let tot = 0, cnt = 0;
+    if (ws1) { tot += ws1.total; cnt += ws1.count; }
+    if (ws2) { tot += ws2.total; cnt += ws2.count; }
+    const avgWait = cnt ? Math.round(tot / cnt * 10) / 10 : 0;
     return {
       id: s.id, name: s.name, lat: s.lat, lng: s.lng,
       wait1: w1, wait2: w2, waitCount: w1 + w2,
-      waitDuration: first ? Math.round((Date.now() - first) / 60000 * 10) / 10 : 0
+      waitDuration: first ? Math.round((Date.now() - first) / 60000 * 10) / 10 : 0,
+      avgWait
     };
   });
 
@@ -392,7 +427,12 @@ function getFullState() {
     notices: state.notices.slice(0, 3),
     feedbacks: state.feedbacks,
     lostFound: state.lostFound,
-    exceptions: state.exceptions
+    exceptions: state.exceptions,
+    stats: (() => {
+      let tot = 0, cnt = 0;
+      Object.values(state.waitStats).forEach(w => { tot += w.total; cnt += w.count; });
+      return { avgWait: cnt ? Math.round(tot / cnt * 10) / 10 : 0, samples: cnt };
+    })()
   };
 }
 
@@ -475,6 +515,8 @@ app.post('/api/demand', (req, res) => {
   const target = schedule.find(s => s.id === id && s.routeId === routeId);
   const eta = target ? target.eta : 0;
   const busId = target ? target.nearestBusId : null;
+  const nbBus = busId ? busById[busId] : null;
+  const full = !!(nbBus && nbBus.onboard >= CAPACITY);
   io.emit('demand:new', {
     stopId: id, stopName: stopById[id].name,
     routeId, routeName: routeById[routeId].name,
@@ -484,7 +526,7 @@ app.post('/api/demand', (req, res) => {
   res.json({
     success: true, stopName: stopById[id].name,
     routeId, routeName: routeById[routeId].name,
-    waitCount: d.count, eta, busId
+    waitCount: d.count, eta, busId, full
   });
 });
 
@@ -510,10 +552,16 @@ app.post('/api/bus/arrive', (req, res) => {
   if (bus.status !== 'operating') return res.status(400).json({ error: '该车未在运营中' });
   const route = routeById[bus.routeId];
   const nextId = route.stopIds[(bus.currentStopIdx + 1) % route.stopIds.length];
+  const nxt = stopById[nextId];
+  // 就近校验: 车辆须接近目标站才能确认到站, 否则会出现"提前通知"(圆点未到却已通知上车)
+  const distKm = haversine(bus.lat, bus.lng, nxt.lat, nxt.lng);
+  if (distKm > 0.08) {
+    return res.status(400).json({ error: `车辆尚未到达${nxt.name}，无法确认（距该站约${Math.round(distKm * 1000)}米）` });
+  }
   bus.currentStopIdx = (bus.currentStopIdx + 1) % route.stopIds.length;
-  bus.lat = stopById[nextId].lat;
-  bus.lng = stopById[nextId].lng;
-  bus.currentStopName = stopById[nextId].name;
+  bus.lat = nxt.lat;
+  bus.lng = nxt.lng;
+  bus.currentStopName = nxt.name;
   bus.dwell = DWELL_TICKS;
   serveStop(bus, nextId);
   if (nextId === 1) { bus.lapsCompleted++; bus.onboard = 0; bus.crowd = 'empty'; }

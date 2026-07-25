@@ -229,7 +229,8 @@ function renderDispatch() {
   const peak = s.peak || { active: false, manual: false, label: '' };
   const hw = document.getElementById('dp-headway');
   if (hw && s.fleet) {
-    hw.textContent = `运营 ${s.fleet.operating} 辆 · 待命 ${s.fleet.resting || 0} 辆`;
+    const avg = s.stats && s.stats.samples ? ` · 累计均候 ${s.stats.avgWait} 分(${s.stats.samples}次)` : '';
+    hw.textContent = `运营 ${s.fleet.operating} 辆 · 待命 ${s.fleet.resting || 0} 辆${avg}`;
   }
   const btnPeak = document.getElementById('btn-peak');
   if (btnPeak) {
@@ -262,7 +263,7 @@ function renderDispatch() {
           <div style="width:26px;height:26px;border-radius:50%;background:${pc};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;">${i + 1}</div>
           <div class="li-main">
             <div class="li-title">${d.name} · ${d.routeName} <span class="tag tag-danger">${d.waitCount}人</span></div>
-            <div class="li-sub">已等 ${d.waitDuration} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}${hi ? ' · 建议优先增发' : ''}</div>
+            <div class="li-sub">已等 ${d.waitDuration} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}${d.avgWait ? ' · 历史均候 ' + d.avgWait + '分' : ''}${hi ? ' · 建议优先增发' : ''}</div>
           </div>
           ${dispatchBtn}
         </div>`;

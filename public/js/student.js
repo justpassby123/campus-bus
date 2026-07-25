@@ -175,6 +175,20 @@ function renderMyWaits() {
       }
     }
     const etaText = busId ? `最近 ${busId} 约 ${eta} 分钟到站` : '暂无该线运营车，请耐心等待';
+    if (w.overflowTip) {
+      return `
+      <div class="list-item">
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: #D97706; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">!</div>
+        <div class="li-main">
+          <div class="li-title">${w.stopName} · ${w.routeName} <span class="tag tag-warning">满载滞留</span></div>
+          <div class="li-sub" style="color:#D97706">${w.overflowTip}</div>
+        </div>
+      </div>
+      <div class="grid-2" style="gap:8px; margin: 4px 0 10px;">
+        <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 我已上车</button>
+        <button class="btn btn-sm btn-outline" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+      </div>`;
+    }
     return `
       <div class="list-item">
         <div style="width: 34px; height: 34px; border-radius: 50%; background: #2563EB; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">${w.routeId === 1 ? '一' : '二'}</div>
@@ -208,10 +222,22 @@ async function resolveWait(stopId, routeId, reason) {
 function handleDemandResolved(d) {
   const idx = myWaits.findIndex(w => w.stopId === d.stopId && w.routeId === d.routeId);
   if (idx >= 0) {
-    App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，请上车！`, 3800);
-    myWaits.splice(idx, 1);
-    saveMyWaits();
-    renderMyWaits();
+    if (d.overflow) {
+      // 本班满载没接走: 保留等待卡, 提示下一班
+      const nextTxt = d.nextBusId
+        ? `本班 ${d.busId} 已满载，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
+        : `本班 ${d.busId} 已满载，请等下一班`;
+      App.toast('⚠️ ' + nextTxt, 4200);
+      myWaits[idx].overflowTip = nextTxt;
+      saveMyWaits();
+      renderMyWaits();
+    } else {
+      const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
+      App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，请上车！${waitTxt}`, 3800);
+      myWaits.splice(idx, 1);
+      saveMyWaits();
+      renderMyWaits();
+    }
   }
 }
 
@@ -302,7 +328,7 @@ async function doReport(stopId, routeId) {
       saveMyWaits();
       renderMyWaits();
       const tip = data.busId
-        ? `${data.stopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟`
+        ? `${data.stopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟${data.full ? '（该班可能满载，建议留意下一班）' : ''}`
         : `${data.stopName} ${data.routeName} 已上报`;
       App.toast('✓ ' + tip, 3000);
     } else {

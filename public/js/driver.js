@@ -126,7 +126,7 @@ function renderAll() {
   // 地图
   const ops = s.buses.filter(b => b.status === 'operating');
   const parkedBuses = s.buses.filter(b => b.status !== 'operating');
-  MapView.render('map-driver', s.stops, ops, { restArea: s.restArea, parkedBuses });
+  MapView.render('map-driver', s.stops, ops, { restArea: s.restArea, parkedBuses, routes: routesCache });
 
   // 需求列表 (两线并列)
   renderDemandList();
@@ -225,10 +225,25 @@ function renderDispatch() {
   if (!s) return;
   const sched = s.schedule || [];
 
-  // 发车间隔提示
+  // 高峰状态 + 车队计数 (不再展示"间隔")
+  const peak = s.peak || { active: false, manual: false, label: '' };
   const hw = document.getElementById('dp-headway');
   if (hw && s.fleet) {
-    hw.textContent = `一线约 ${s.fleet.headway1 || '-'} 分 · 二线约 ${s.fleet.headway2 || '-'} 分一班`;
+    hw.textContent = `运营 ${s.fleet.operating} 辆 · 待命 ${s.fleet.resting || 0} 辆`;
+  }
+  const btnPeak = document.getElementById('btn-peak');
+  if (btnPeak) {
+    btnPeak.textContent = peak.active ? '🟢 高峰中·点击退出' : '🔴 开启演示高峰';
+    btnPeak.className = peak.active ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-danger';
+  }
+  const pb = document.getElementById('dp-peak-banner');
+  if (pb) {
+    if (peak.active) {
+      pb.classList.remove('hidden');
+      document.getElementById('dp-peak-text').textContent =
+        peak.manual ? '演示模式：待命车已热备，压力站可一键增发'
+          : (peak.label + '：待命车已热备，压力站可一键增发');
+    } else pb.classList.add('hidden');
   }
 
   // 智能建议 / 需求榜
@@ -239,6 +254,9 @@ function renderDispatch() {
     sug.innerHTML = sched.slice(0, 6).map((d, i) => {
       const hi = i === 0;
       const pc = d.priority === 'high' ? '#DC2626' : d.priority === 'medium' ? '#D97706' : '#9CA3AF';
+      const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
+        ? `<button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="quickDispatch('${d.nearbyBusId}', ${d.routeId})">⚡ 一键增发</button>`
+        : '';
       return `
         <div class="list-item" ${hi ? 'style="background:#FEF3C7;border-radius:6px;padding:10px;"' : ''}>
           <div style="width:26px;height:26px;border-radius:50%;background:${pc};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;">${i + 1}</div>
@@ -246,6 +264,7 @@ function renderDispatch() {
             <div class="li-title">${d.name} · ${d.routeName} <span class="tag tag-danger">${d.waitCount}人</span></div>
             <div class="li-sub">已等 ${d.waitDuration} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}${hi ? ' · 建议优先增发' : ''}</div>
           </div>
+          ${dispatchBtn}
         </div>`;
     }).join('');
   }
@@ -292,6 +311,25 @@ function dispatchBus(id, routeId) {
   }).then(r => r.json()).then(d => {
     App.toast(d.success ? `✓ ${id} 已派往${d.routeName}` : '派车失败: ' + (d.error || ''));
   });
+}
+
+// ③ 调度台一键增发 (压力站直接派最近待命车)
+function quickDispatch(id, routeId) {
+  fetch(API_BASE + '/api/bus/route', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: id, routeId })
+  }).then(r => r.json()).then(d => {
+    App.toast(d.success ? `⚡ ${id} 已增发 ${d.routeName}` : '增发失败: ' + (d.error || ''));
+  });
+}
+
+// 演示高峰模式开关 (答辩演示随时可触发)
+function togglePeak() {
+  fetch(API_BASE + '/api/peak/toggle', { method: 'POST' })
+    .then(r => r.json()).then(d => {
+      App.toast(d.active ? '已开启演示高峰模式' : '已退出高峰模式');
+      renderDispatch();
+    });
 }
 
 function recallBus(id) {
@@ -350,7 +388,7 @@ function renderAttendance() {
           ${arr.map(b => `<span class="tag ${b.status === 'operating' ? 'tag-success' : ''}">${b.id} ${b.driver}</span>`).join('')}
         </div>
       </div>`).join('') +
-      `<div class="text-sm text-2">高峰两班交叠，每线约 3 车运营，约 8-10 分钟一班。司机按班次交接，不跑单趟即休。</div>`;
+      `<div class="text-sm text-2">高峰时段（午间放学、晚课放学）待命车辆自动热备，需求集中时调度台将提示一键增发。司机按班次交接，不跑单趟即休。</div>`;
   }
 }
 

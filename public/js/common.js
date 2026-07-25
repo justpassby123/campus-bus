@@ -85,7 +85,7 @@ window.App = {
 };
 
 // ============================================================
-//  地图 (干净白色风格, 含休息区标记)
+//  地图 (南审校园风格: 双线配色环线 + 校园底色 + 指北针/比例尺)
 // ============================================================
 window.MapView = {
   render(containerId, stops, buses, opts = {}) {
@@ -93,7 +93,8 @@ window.MapView = {
     if (!el || !stops || stops.length === 0) return;
     const busArr = Array.isArray(buses) ? buses : (buses ? [buses] : []);
     const restArea = opts.restArea;
-    const restingBuses = opts.restingBuses || [];
+    const parkedBuses = opts.parkedBuses || opts.restingBuses || [];
+    const routes = opts.routes || [];
 
     // 计算经纬度范围
     const lats = stops.map(s => s.lat), lngs = stops.map(s => s.lng);
@@ -102,88 +103,102 @@ window.MapView = {
 
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-    const pad = 0.0006;
+    const pad = 0.0007;
     const rangeLat = (maxLat - minLat) + pad * 2;
     const rangeLng = (maxLng - minLng) + pad * 2;
 
-    const W = el.clientWidth || 400;
-    const H = el.clientHeight || 240;
+    const W = 480, H = 300;
     const toXY = (lat, lng) => [
       ((lng - (minLng - pad)) / rangeLng) * W,
       (1 - (lat - (minLat - pad)) / rangeLat) * H
     ];
 
-    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" style="background: #F9FAFB; display: block;">`;
+    const ROUTE_COLORS = { 1: '#2563EB', 2: '#EA580C' }; // 一线蓝 / 二线橙
 
-    // 路线虚线 (一线)
-    const routeOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,2];
-    let pathD = '';
-    routeOrder.forEach((id, i) => {
-      const s = stops.find(x => x.id === id);
-      if (!s) return;
-      const [x, y] = toXY(s.lat, s.lng);
-      pathD += (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block; border-radius:8px;">`;
+
+    // 校园底图: 柔和草地/建筑分区感
+    svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#EAF3EA"/>`;
+    svg += `<rect x="16" y="16" width="${W-32}" height="${H-32}" rx="18" fill="#F2F8F2" stroke="#D6E6D6" stroke-width="1.5"/>`;
+
+    // 两条线路 (闭合环线, 各自着色)
+    routes.forEach(r => {
+      const ids = r.stopIds;
+      let d = '';
+      ids.forEach((id, i) => {
+        const s = stops.find(x => x.id === id);
+        if (!s) return;
+        const [x, y] = toXY(s.lat, s.lng);
+        d += (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+      });
+      svg += `<path d="${d}" stroke="${ROUTE_COLORS[r.id] || '#9CA3AF'}" stroke-width="3.5" fill="none" opacity="0.45" stroke-linejoin="round" stroke-linecap="round"/>`;
     });
-    svg += `<path d="${pathD}" stroke="#D1D5DB" stroke-width="2" fill="none" stroke-dasharray="5 4" />`;
 
     // 站点
     stops.forEach(s => {
       const [x, y] = toXY(s.lat, s.lng);
       const wait = s.waitCount || 0;
-      let fill = '#fff', stroke = '#9CA3AF', r = 5;
-      if (wait > 0) {
-        if (wait >= 3) { fill = '#DC2626'; stroke = '#DC2626'; }
-        else { fill = '#D97706'; stroke = '#D97706'; }
-        r = 7;
-      }
-      svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" />`;
-      svg += `<text x="${x}" y="${y+18}" text-anchor="middle" font-size="10" fill="#6B7280">${s.name}</text>`;
-      if (wait > 0) {
-        svg += `<text x="${x}" y="${y-10}" text-anchor="middle" font-size="10" font-weight="600" fill="${stroke}">${wait}人</text>`;
-      }
-    });
-
-    // 休息区标记 (放大以容纳多辆停放车辆)
-    if (restArea) {
-      const [x, y] = toXY(restArea.lat, restArea.lng);
-      svg += `<rect x="${x-32}" y="${y-22}" width="64" height="44" rx="6" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1" stroke-dasharray="4 3"/>`;
-      svg += `<text x="${x}" y="${y+18}" text-anchor="middle" font-size="9" fill="#6B7280">P 沁园休息区</text>`;
-    }
-
-    // 运营车辆
-    busArr.forEach((b, i) => {
-      const [bx, by] = toXY(b.lat, b.lng);
-      const color = (i % 2 === 0) ? '#1F2937' : '#374151';
-      const label = b.id ? b.id.replace('#', '') : (i + 1);
+      const isHot = wait >= 3;
+      const isWarm = wait > 0 && wait < 3;
+      const ring = isHot ? '#DC2626' : isWarm ? '#D97706' : '#6B7280';
+      const fill = isHot ? '#FEE2E2' : '#FFFFFF';
+      const r = isHot ? 7 : 5.5;
       svg += `<g>
-        <circle cx="${bx}" cy="${by}" r="10" fill="${color}" opacity="0.15">
-          <animate attributeName="r" values="8;14;8" dur="2s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/>
-        </circle>
-        <circle cx="${bx}" cy="${by}" r="9" fill="${color}" stroke="#fff" stroke-width="2"/>
-        <text x="${bx}" y="${by+3.5}" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">${label}</text>
+        <circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${ring}" stroke-width="2"/>
+        <text x="${x}" y="${y + 16}" text-anchor="middle" font-size="10" fill="#374151" font-weight="${isHot ? 600 : 400}">${s.name}</text>
+        ${wait > 0 ? `<text x="${x}" y="${y - 9}" text-anchor="middle" font-size="10" font-weight="700" fill="${ring}">${wait}人</text>` : ''}
       </g>`;
     });
 
-    // 停放车辆 (resting/standby/backup 都在休息区)
-    const parkedBuses = opts.parkedBuses || restingBuses;
+    // 休息区
+    if (restArea) {
+      const [x, y] = toXY(restArea.lat, restArea.lng);
+      svg += `<rect x="${x-30}" y="${y-20}" width="60" height="40" rx="8" fill="#E0EDFF" stroke="#93C5FD" stroke-width="1.5" stroke-dasharray="5 3"/>`;
+      svg += `<text x="${x}" y="${y+16}" text-anchor="middle" font-size="9" fill="#2563EB" font-weight="600">🅿️ 沁园休息区</text>`;
+    }
+
+    // 运营车辆 (按线路着色)
+    busArr.forEach((b) => {
+      const [bx, by] = toXY(b.lat, b.lng);
+      const color = b.routeId === 2 ? '#EA580C' : '#2563EB';
+      const label = b.id ? b.id.replace('#', '') : '';
+      svg += `<g>
+        <circle cx="${bx}" cy="${by}" r="11" fill="${color}" opacity="0.18">
+          <animate attributeName="r" values="9;15;9" dur="2.2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.3;0;0.3" dur="2.2s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="${bx}" cy="${by}" r="9" fill="${color}" stroke="#fff" stroke-width="2"/>
+        <text x="${bx}" y="${by+3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${label}</text>
+      </g>`;
+    });
+
+    // 停放车辆 (休息区网格)
+    const cols = 3;
     parkedBuses.forEach((b, i) => {
       if (!restArea) return;
       const [px, py] = toXY(restArea.lat, restArea.lng);
-      // 围绕休息区中心网格化排列
-      const cols = 3;
       const col = i % cols, row = Math.floor(i / cols);
-      const x = px - 18 + col * 18;
-      const y = py - 10 + row * 10;
+      const x = px - 16 + col * 16;
+      const y = py - 8 + row * 9;
       const label = b.id.replace('#', '');
-      const fill = '#fff';
-      const stroke = b.status === 'backup' ? '#9CA3AF' : b.status === 'standby' ? '#6B7280' : '#1F2937';
-      const textColor = b.status === 'backup' ? '#9CA3AF' : '#374151';
-      svg += `<g>
-        <circle cx="${x}" cy="${y}" r="6" fill="${fill}" stroke="${stroke}" stroke-width="${b.status === 'backup' ? '1' : '1.5'}" ${b.status === 'backup' ? 'stroke-dasharray="2 1"' : ''}/>
-        <text x="${x}" y="${y+2.5}" text-anchor="middle" font-size="8" font-weight="600" fill="${textColor}">${label}</text>
-      </g>`;
+      const color = b.status === 'backup' ? '#9CA3AF' : b.status === 'standby' ? '#2563EB' : '#1F2937';
+      svg += `<circle cx="${x}" cy="${y}" r="5" fill="#fff" stroke="${color}" stroke-width="1.5" ${b.status === 'backup' ? 'stroke-dasharray="2 1"' : ''}/>`;
+      svg += `<text x="${x}" y="${y+2.5}" text-anchor="middle" font-size="7" font-weight="700" fill="${color}">${label}</text>`;
     });
+
+    // 指北针
+    svg += `<g transform="translate(${W-30}, 28)">
+      <circle r="13" fill="#fff" stroke="#CBD5E1" stroke-width="1"/>
+      <path d="M0 -9 L4 4 L0 0 L-4 4 Z" fill="#DC2626"/>
+      <text x="0" y="-14" text-anchor="middle" font-size="8" fill="#6B7280">N</text>
+    </g>`;
+    // 比例尺 (装饰)
+    svg += `<g transform="translate(28, ${H-22})">
+      <line x1="0" y1="0" x2="44" y2="0" stroke="#6B7280" stroke-width="1.5"/>
+      <line x1="0" y1="-3" x2="0" y2="3" stroke="#6B7280" stroke-width="1.5"/>
+      <line x1="44" y1="-3" x2="44" y2="3" stroke="#6B7280" stroke-width="1.5"/>
+      <text x="22" y="12" text-anchor="middle" font-size="8" fill="#6B7280">约 200m</text>
+    </g>`;
 
     svg += `</svg>`;
     el.innerHTML = svg;

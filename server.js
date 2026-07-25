@@ -6,7 +6,7 @@
 //   ① 候车需求按 站点+线路 二维存储 (一线/二线分开)
 //   ② 学生上车/离开 核销 (/api/demand/cancel)
 //   ③ 调度台派车/召回 (已有API, 前端新增调度台)
-//   ⑤ 高峰每线3车错峰 → 约8-10分钟一班 (全程约25-30分钟)
+//   ⑤ 运营 4 辆(每线2, 错峰半圈) · 高峰待命车热备 + 一键增发(按课表 11:50/20:50)
 //   ⑥ 核定载客 22 人, 满载不再上客, 到站有人下车
 //   ⑦ 司机按上午/下午班排班, 不再"跑完一趟就休息"(持续环线)
 // ============================================================
@@ -101,22 +101,46 @@ const timetable = {
 // =========================================================
 //  车队: 9辆 (1备班 / 8日常)
 //  status: operating | resting | standby | backup
-//  ⑤ 默认 6 辆运营 (一线3 + 二线3, 错峰), 2 待命, 1 备班
-//     每线 3 车 → 全程约27分钟 ÷ 3 ≈ 9分钟一班
+//  默认 4 辆运营 (一线2 + 二线2, 错峰半圈), 4 待命, 1 备班
+//     每线 2 车 → 全程约27分钟 ÷ 2 ≈ 13-14分钟自然间隔(前端不展示间隔)
 //  ⑦ shift: 上午班 / 下午班 / 备班 (排班展示用)
+//  高峰模式: 待命车"热备", 需求≥15人自动建议增发 (见 PEAK_WINDOWS)
 // =========================================================
 const CAPACITY = 22;  // ⑥ 核定载客量
 const LOOP_MINUTES = 27;  // 全程平均分钟数(用于计算发车间隔)
+
+// 高峰时段 (按学校作息表: 主峰 11:50 午放学 / 20:50 晚课放学)
+const PEAK_WINDOWS = [
+  { label: '早高峰',   start: '08:20', end: '08:40' },
+  { label: '午间放学', start: '11:45', end: '12:20' },
+  { label: '下午上课', start: '13:20', end: '13:40' },
+  { label: '晚课放学', start: '19:05', end: '20:20' },
+  { label: '晚课放学', start: '20:40', end: '21:05' }
+];
+let manualPeakUntil = 0;  // 演示高峰模式: 临时强制高峰(10分钟有效)
+
+function isPeakNow() {
+  const now = new Date();
+  const hm = now.getHours() * 60 + now.getMinutes();
+  const clock = PEAK_WINDOWS.find(w => {
+    const [sh, sm] = w.start.split(':').map(Number);
+    const [eh, em] = w.end.split(':').map(Number);
+    return hm >= sh * 60 + sm && hm <= eh * 60 + em;
+  });
+  const manual = manualPeakUntil > Date.now();
+  return { active: !!(clock || manual), label: clock ? clock.label : '演示高峰', manual };
+}
+
 const fleetDef = [
-  // 一线 3 辆运营, 起点错开 (18个索引位, 每6格一辆)
+  // 一线 2 辆运营, 错开半圈 (18索引, 间隔9)
   { id: '#01', driver: '张建国', routeId: 1, status: 'operating', startIdx: 0,  shift: '上午班' },
-  { id: '#02', driver: '李卫东', routeId: 1, status: 'operating', startIdx: 6,  shift: '上午班' },
-  { id: '#03', driver: '王志强', routeId: 1, status: 'operating', startIdx: 12, shift: '下午班' },
-  // 二线 3 辆运营, 起点错开
+  { id: '#02', driver: '李卫东', routeId: 1, status: 'operating', startIdx: 9,  shift: '上午班' },
+  // 二线 2 辆运营, 错开半圈
   { id: '#04', driver: '赵 明',  routeId: 2, status: 'operating', startIdx: 0,  shift: '上午班' },
-  { id: '#05', driver: '刘 洋',  routeId: 2, status: 'operating', startIdx: 6,  shift: '上午班' },
-  { id: '#06', driver: '陈 静',  routeId: 2, status: 'operating', startIdx: 12, shift: '下午班' },
-  // 2 辆待命, 停在沁园休息区 (下午班顶班/高峰增发)
+  { id: '#05', driver: '刘 洋',  routeId: 2, status: 'operating', startIdx: 9,  shift: '下午班' },
+  // 4 辆待命, 停在沁园休息区 (高峰热备/增发)
+  { id: '#03', driver: '王志强', routeId: 1, status: 'standby', shift: '下午班' },
+  { id: '#06', driver: '陈 静',  routeId: 2, status: 'standby', shift: '下午班' },
   { id: '#07', driver: '孙 磊',  routeId: 1, status: 'standby', shift: '下午班' },
   { id: '#08', driver: '周 婷',  routeId: 2, status: 'standby', shift: '下午班' },
   // 1 辆备班, 也停在沁园休息区
@@ -166,7 +190,7 @@ const state = {
     { id: 1, type: '晚点', content: '南门北 17:30 没等到车', contact: '同学A', time: '2026-07-18 17:45', reply: '', status: 'pending' }
   ],
   notices: [
-    { id: 1, type: 'top', title: '暑期校巴正常运行', time: '2026-07-18', content: '首班 08:00，末班 21:30，约 8-10 分钟一班，全程约 25-30 分钟。' }
+    { id: 1, type: 'top', title: '系统演示模式', time: '2026-07-25', content: '本系统为南京审计大学校园公交智能调度演示平台。首班 08:00，末班 21:30，候车请于首页选择站点与线路上报，车辆到站将实时提醒。' }
   ],
   exceptions: []
 };
@@ -207,9 +231,9 @@ function haversine(lat1, lng1, lat2, lng2) {
 }
 
 function getTimePeriod() {
+  if (isPeakNow().active) return 'peak';
   const h = new Date().getHours();
   if (h < 8 || h >= 21.5) return 'off';
-  if ((h >= 8 && h < 9) || (h >= 11 && h < 14) || (h >= 16 && h < 19)) return 'peak';
   return 'normal';
 }
 
@@ -222,6 +246,12 @@ function autoCrowd(onboard) {
 
 function operatingBuses() {
   return buses.filter(b => b.status === 'operating');
+}
+
+// 可增发的待命/备班车 (优先同线路)
+function standbyBusForRoute(routeId) {
+  return buses.find(b => ['standby', 'backup', 'resting'].includes(b.status) && b.routeId === routeId)
+      || buses.find(b => ['standby', 'backup', 'resting'].includes(b.status));
 }
 
 // 最近的"该线路"运营车辆 (只有同线路车才会接该线乘客)
@@ -286,6 +316,7 @@ function calculateSchedule() {
       else if (score >= 15) priority = 'medium';
       else priority = 'low';
       const eta = nb ? Math.max(1, Math.round(distance / 20 * 60)) : 0;
+      const sb = standbyBusForRoute(routeId);
       result.push({
         id: s.id, name: s.name, lat: s.lat, lng: s.lng,
         routeId, routeName: routeById[routeId].name,
@@ -294,7 +325,9 @@ function calculateSchedule() {
         distance: Math.round(distance * 100) / 100,
         score: Math.round(score * 10) / 10,
         priority, eta,
-        nearestBusId: nb ? nb.bus.id : null
+        nearestBusId: nb ? nb.bus.id : null,
+        suggestDispatch: priority === 'high',
+        nearbyBusId: sb ? sb.id : null
       });
     }
   }
@@ -337,6 +370,7 @@ function getFullState() {
     restArea: REST_AREA,
     schedule,
     timePeriod: getTimePeriod(),
+    peak: isPeakNow(),
     lastTick: state.lastTick || 0,
     fleet: {
       total: buses.length,
@@ -568,6 +602,14 @@ app.post('/api/simulate/peak', (req, res) => {
   }
   broadcastState();
   res.json({ success: true, generated });
+});
+
+// 演示高峰模式开关 (答辩演示用: 临时强制高峰10分钟)
+app.post('/api/peak/toggle', (req, res) => {
+  if (manualPeakUntil > Date.now()) manualPeakUntil = 0;
+  else manualPeakUntil = Date.now() + 10 * 60 * 1000;
+  broadcastState();
+  res.json({ success: true, active: manualPeakUntil > Date.now() });
 });
 
 // 清空

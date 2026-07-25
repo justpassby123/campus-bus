@@ -112,12 +112,11 @@ function renderAll() {
   document.getElementById('header-period').textContent = App.periodText(s.timePeriod) + '时段';
 
   const peakBanner = document.getElementById('s-peak-banner');
-  if (s.timePeriod === 'peak') {
+  if (s.peak && s.peak.active) {
     peakBanner.classList.remove('hidden');
     document.getElementById('s-peak-text').textContent =
-      new Date().getHours() < 9 ? '早高峰 8:00-9:00，候车时间可能延长' :
-      new Date().getHours() < 14 ? '午餐时段 11:00-14:00，餐厅站较拥挤' :
-      '晚高峰 16:00-19:00，建议提前出门';
+      s.peak.manual ? '演示高峰模式：待命车辆已热备，候车时间可能延长'
+        : (s.peak.label + '，候车时间可能延长');
   } else {
     peakBanner.classList.add('hidden');
   }
@@ -131,7 +130,7 @@ function renderAll() {
   // 地图
   const ops = s.buses ? s.buses.filter(b => b.status === 'operating') : [];
   const restingBuses = s.buses ? s.buses.filter(b => b.status !== 'operating') : [];
-  MapView.render('map-student', s.stops, ops, { restArea: s.restArea, restingBuses });
+  MapView.render('map-student', s.stops, ops, { restArea: s.restArea, restingBuses, routes: routesCache });
 
   renderBusList(ops);
   renderTopNotices();
@@ -434,7 +433,7 @@ function renderFleetInfo() {
   const el = document.getElementById('me-fleet');
   if (!s || !s.fleet) { el.innerHTML = '加载中...'; return; }
   const f = s.fleet;
-  el.innerHTML = `共 ${f.total} 辆车 (日常 ${f.daily} 辆 + 备班 ${f.backup} 辆)，当前运营 <b>${f.operating}</b> 辆 (一线 ${f.line1Operating} + 二线 ${f.line2Operating})。全程约 ${f.loopMinutes} 分钟，每线约 ${f.headway1 || 10} 分钟一班。`;
+  el.innerHTML = `共 ${f.total} 辆车 (日常 ${f.daily} 辆 + 备班 ${f.backup} 辆)，当前运营 <b>${f.operating}</b> 辆 (一线 ${f.line1Operating} + 二线 ${f.line2Operating})。全程约 ${f.loopMinutes} 分钟。`;
 }
 
 async function loadNotices() {

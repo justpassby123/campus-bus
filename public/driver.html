@@ -110,11 +110,33 @@
 
       <!-- ========== TAB 3: 调度台 ========== -->
       <div id="tab-dispatch" class="tab-pane hidden">
+        <!-- 高峰演示开关 -->
+        <div class="card">
+          <div class="flex gap-2" style="align-items: center;">
+            <div class="flex-1">
+              <div class="font-bold">演示高峰模式</div>
+              <div class="text-sm text-2">模拟 11:50 午放学 / 20:50 晚课放学 压力</div>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">🔴 开启演示高峰</button>
+          </div>
+        </div>
+
+        <!-- 高峰热备横幅 -->
+        <div id="dp-peak-banner" class="card hidden" style="background: #FEF3C7; border-color: #FCD34D;">
+          <div class="flex gap-2" style="align-items: center;">
+            <span style="font-size: 20px;">🔴</span>
+            <div class="flex-1">
+              <div class="font-bold">高峰模式 · 待命车辆已热备</div>
+              <div class="text-sm text-2" id="dp-peak-text">压力站可一键增发</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 智能建议 / 需求榜 -->
         <div class="card">
           <div class="card-title">
             <span>候车压力榜</span>
-            <span class="more" id="dp-headway">每线约 9 分一班</span>
+            <span class="more" id="dp-headway">运营 0 辆 · 待命 0 辆</span>
           </div>
           <div id="dp-suggest">
             <div class="text-2 text-center" style="padding: 12px;">加载中...</div>

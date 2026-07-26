@@ -1,14 +1,12 @@
 // ============================================================
-//  南审校园公交 - 后端服务 v7
+//  南审校园公交 - 后端服务 v8 (OD上下车模型)
 //  Node.js + Express + Socket.io
 //  16站 / 2线 / 9车(1备班) / 沁园休息区
-//  v5 变更:
-//   ① 候车需求按 站点+线路 二维存储 (一线/二线分开)
-//   ② 学生上车/离开 核销 (/api/demand/cancel)
-//   ③ 调度台派车/召回 (已有API, 前端新增调度台)
-//   ⑤ 运营 4 辆(每线2, 错峰半圈) · 高峰待命车热备 + 一键增发(按课表 11:50/20:50)
-//   ⑥ 核定载客 22 人, 满载不再上客, 到站有人下车
-//   ⑦ 司机按上午/下午班排班, 不再"跑完一趟就休息"(持续环线)
+//  v8 变更:
+//   ① OD 上下车模型: 学生报站选目的地, 车到站先下后上
+//   ② 容量上限 25 人, 满载溢出留站等下一班
+//   ③ 溢出统计 + OD 热力统计 (答辩数据亮点)
+//   ④ seedDemoData 带随机目的地, 统计一打开就有内容
 // ============================================================
 const express = require('express');
 const http = require('http');
@@ -106,7 +104,7 @@ const timetable = {
 //  ⑦ shift: 上午班 / 下午班 / 备班 (排班展示用)
 //  高峰模式: 待命车"热备", 需求≥15人自动建议增发 (见 PEAK_WINDOWS)
 // =========================================================
-const CAPACITY = 22;  // ⑥ 核定载客量
+const CAPACITY = 25;  // ⑥ 核定载客量 (v8: 25人上限, 满载溢出)
 const LOOP_MINUTES = 27;  // 全程平均分钟数(用于计算发车间隔)
 
 // 高峰时段 (按学校作息表: 主峰 11:50 午放学 / 20:50 晚课放学)
@@ -163,7 +161,7 @@ function makeBus(def) {
       currentStopName: REST_AREA.name,
       nextStopName: '待派车',
       crowd: 'empty', autoMove: false, speed: 0, dwell: 0,
-      onboard: 0, totalServed: 0, totalTrips: 0, lapsCompleted: 0
+      onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0
     };
   }
   // 运营中: 在路线上的指定位置起步
@@ -176,7 +174,7 @@ function makeBus(def) {
     currentStopName: startStop.name,
     nextStopName: stopById[route.stopIds[(def.startIdx + 1) % route.stopIds.length]].name,
     crowd: 'empty', autoMove: true, speed: 0, dwell: 0,
-    onboard: 0, totalServed: 0, totalTrips: 0, lapsCompleted: 0
+    onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0
   };
 }
 const buses = fleetDef.map(makeBus);
@@ -190,6 +188,8 @@ const busById = Object.fromEntries(buses.map(b => [b.id, b]));
 const state = {
   demands: {},
   waitStats: {},   // 候车时长统计: key=`${stopId}_${routeId}` => {total(分钟), count}
+  overflowStats: {},  // v8: 溢出统计: key=`${stopId}_${routeId}` => 累计溢出人数
+  odStats: {},         // v8: OD热力统计: key=`${fromId}_${toId}` => 累计上车人数
   lostFound: [
     { id: 1, type: '校园卡', desc: '蓝色校园卡，沁园站捡到', contact: '18912345678', time: '2026-07-18 14:30', status: 'open' }
   ],
@@ -207,7 +207,8 @@ const state = {
 // =========================================================
 function ensureDemand(stopId, routeId) {
   if (!state.demands[stopId]) state.demands[stopId] = {};
-  if (!state.demands[stopId][routeId]) state.demands[stopId][routeId] = { count: 0, firstDemandAt: Date.now() };
+  if (!state.demands[stopId][routeId]) state.demands[stopId][routeId] = { count: 0, firstDemandAt: Date.now(), dests: {} };
+  if (!state.demands[stopId][routeId].dests) state.demands[stopId][routeId].dests = {};
   return state.demands[stopId][routeId];
 }
 function getDemand(stopId, routeId) {
@@ -263,25 +264,54 @@ function recordWait(stopId, routeId, minutes) {
   state.waitStats[key].count += 1;
 }
 
+// v8: OD 统计 — 记录上车站→下车站
+function recordOD(fromId, toId, count) {
+  const key = fromId + '_' + toId;
+  if (!state.odStats) state.odStats = {};
+  state.odStats[key] = (state.odStats[key] || 0) + count;
+}
+
+// v8: 为候车人数随机分配目的地 (同线路后续站点)
+function randomDests(stopId, routeId, count) {
+  const route = routeById[routeId];
+  if (!route) return {};
+  const idx = route.stopIds.indexOf(stopId);
+  if (idx === -1) return {};
+  const candidates = [];
+  for (let i = idx + 1; i < route.stopIds.length - 1; i++) {
+    const sid = route.stopIds[i];
+    if (sid !== stopId && stopById[sid]) candidates.push(sid);
+  }
+  if (candidates.length === 0) return { 1: count };
+  const dests = {};
+  for (let i = 0; i < count; i++) {
+    const dest = candidates[Math.floor(Math.random() * candidates.length)];
+    dests[dest] = (dests[dest] || 0) + 1;
+  }
+  return dests;
+}
+
 // =========================================================
 //  演示数据自动注入 (启动即填充)
-//  - 各站点按线路预置候车人数, 保证评委/视频一打开就有内容
+//  - 各站点按线路预置候车人数+随机目的地, 保证评委/视频一打开就有内容
 //  - 预置候车时长统计样本, "数据驱动"亮点一上来就可见
+//  - v8: 预置 OD 热力样本 + 溢出样本
 // =========================================================
 function seedDemoData() {
-  // 预置候车需求 (按线路二维)
+  // 预置候车需求 (按线路二维, 带随机目的地)
   const seedDemands = [
-    { stopId: 3,  routeId: 1, count: 3, minAgo: 4 },  // 南门北 一线
-    { stopId: 3,  routeId: 2, count: 2, minAgo: 3 },  // 南门北 二线
-    { stopId: 2,  routeId: 1, count: 5, minAgo: 6 },  // 中和楼 一线
-    { stopId: 4,  routeId: 1, count: 2, minAgo: 2 },  // 敏行楼 一线
-    { stopId: 15, routeId: 2, count: 3, minAgo: 5 },  // 竞秀楼 二线
-    { stopId: 9,  routeId: 1, count: 2, minAgo: 3 }   // 泽园餐厅 一线
+    { stopId: 3,  routeId: 1, count: 3, minAgo: 4 },
+    { stopId: 3,  routeId: 2, count: 2, minAgo: 3 },
+    { stopId: 2,  routeId: 1, count: 5, minAgo: 6 },
+    { stopId: 4,  routeId: 1, count: 2, minAgo: 2 },
+    { stopId: 15, routeId: 2, count: 3, minAgo: 5 },
+    { stopId: 9,  routeId: 1, count: 2, minAgo: 3 }
   ];
   seedDemands.forEach(({ stopId, routeId, count, minAgo }) => {
     const d = ensureDemand(stopId, routeId);
     d.count = count;
     d.firstDemandAt = Date.now() - minAgo * 60000;
+    d.dests = randomDests(stopId, routeId, count);
   });
   // 预置统计样本: 累计 132 次接客 / 424 分钟 → 全校均候 ≈ 3.2 分
   const preset = [
@@ -291,6 +321,16 @@ function seedDemoData() {
   preset.forEach(([sid, rid, total, cnt]) => {
     state.waitStats[sid + '_' + rid] = { total, count: cnt };
   });
+  // v8: 预置 OD 热力样本 (from→to: 累计上车人次)
+  const odPairs = [
+    [3,12,15],[3,13,8],[2,9,12],[2,13,6],[4,14,10],
+    [15,9,14],[9,13,11],[9,1,9],[15,2,8],[3,9,7],[4,9,5],[2,12,9]
+  ];
+  odPairs.forEach(([from, to, cnt]) => {
+    state.odStats[from + '_' + to] = cnt;
+  });
+  // v8: 预置溢出样本 (竹苑/中和楼/竞秀楼高峰满载)
+  state.overflowStats = { '11_1': 4, '2_1': 3, '15_2': 2 };
 }
 
 // 可增发的待命/备班车 (优先同线路)
@@ -312,49 +352,88 @@ function nearestBusToStop(stop, routeId) {
 }
 
 // =========================================================
-//  ⑥ 到站服务: 先下客, 再上客(不超核定22人)
+//  v8 到站服务: OD 先下后上模型
+//  ① 下车: 车上目的地 == 本站的乘客下车
+//  ② 上车: 空位内接客, 满载溢出留站等下一班
+//  ③ 统计: 记录候车时长 + OD 热力 + 溢出次数
 // =========================================================
 function serveStop(bus, stopId) {
-  // 部分乘客到站下车 (30%~50%)
-  if (bus.onboard > 0) {
-    const off = Math.round(bus.onboard * (0.3 + Math.random() * 0.2));
-    bus.onboard = Math.max(0, bus.onboard - off);
+  // ① 下车: 车上目的地 == 本站的乘客下车
+  let offCount = (bus.passengers && bus.passengers[stopId]) || 0;
+  if (offCount > 0) {
+    bus.onboard = Math.max(0, bus.onboard - offCount);
+    delete bus.passengers[stopId];
   }
-  // 接走该线路候车乘客, 满载则留在站点等下一班
+
+  // ② 上车: 先下后上, 满载溢出
   const d = getDemand(stopId, bus.routeId);
-  let served = 0;
+  let served = 0, remaining = 0;
+  let boardedDests = {};
+  let waitDuration = 0;
+  let nextBusId = null, nextEta = 0;
+
   if (d && d.count > 0) {
-    served = Math.min(d.count, CAPACITY - bus.onboard);
+    const space = Math.max(0, CAPACITY - bus.onboard);
+    served = Math.min(d.count, space);
+    waitDuration = (Date.now() - d.firstDemandAt) / 60000;
+
     if (served > 0) {
       bus.onboard += served;
       bus.totalServed += served;
       bus.totalTrips++;
-      d.count -= served;
-      const remaining = d.count;                 // 没接走、需等下一班的人数
-      const waitDuration = (Date.now() - d.firstDemandAt) / 60000;
-      recordWait(stopId, bus.routeId, waitDuration);
-      // 满载滞留: 计算下一班(排除本车)最近同线车 ETA, 给学生端提示
-      let nextBusId = null, nextEta = 0;
-      if (remaining > 0) {
-        const stop = stopById[stopId];
-        let best = null, bd = Infinity;
-        for (const b of operatingBuses()) {
-          if (b.routeId !== bus.routeId || b.id === bus.id) continue;
-          const dd = haversine(b.lat, b.lng, stop.lat, stop.lng);
-          if (dd < bd) { bd = dd; best = b; }
-        }
-        if (best) { nextBusId = best.id; nextEta = Math.max(1, Math.round(bd / 20 * 60)); }
+
+      // 按目的地贪心分配上车乘客到 bus.passengers
+      let toBoard = served;
+      const newDests = {};
+      for (const [destId, cnt] of Object.entries(d.dests || {})) {
+        if (toBoard <= 0) { newDests[destId] = cnt; continue; }
+        const take = Math.min(cnt, toBoard);
+        boardedDests[destId] = (boardedDests[destId] || 0) + take;
+        bus.passengers[destId] = (bus.passengers[destId] || 0) + take;
+        // OD 统计
+        recordOD(stopId, parseInt(destId), take);
+        if (cnt > take) newDests[destId] = cnt - take;
+        toBoard -= take;
       }
-      if (d.count <= 0) clearDemand(stopId, bus.routeId);
-      io.emit('demand:resolved', {
-        stopId, stopName: stopById[stopId].name, routeId: bus.routeId,
-        routeName: routeById[bus.routeId].name, served, busId: bus.id, remaining,
-        waitDuration: Math.round(waitDuration * 10) / 10,
-        overflow: remaining > 0,
-        nextBusId, nextEta
-      });
+      d.count -= served;
+      d.dests = newDests;
     }
+
+    remaining = d.count;
+
+    // 满载溢出: 算下一班 ETA
+    if (remaining > 0) {
+      const stop = stopById[stopId];
+      let best = null, bd = Infinity;
+      for (const b of operatingBuses()) {
+        if (b.routeId !== bus.routeId || b.id === bus.id) continue;
+        const dd = haversine(b.lat, b.lng, stop.lat, stop.lng);
+        if (dd < bd) { bd = dd; best = b; }
+      }
+      if (best) { nextBusId = best.id; nextEta = Math.max(1, Math.round(bd / 20 * 60)); }
+
+      // 溢出统计
+      const ovKey = stopId + '_' + bus.routeId;
+      state.overflowStats[ovKey] = (state.overflowStats[ovKey] || 0) + remaining;
+    }
+
+    // 候车时长统计 (有接客即记录)
+    recordWait(stopId, bus.routeId, waitDuration);
+
+    if (d.count <= 0) clearDemand(stopId, bus.routeId);
+
+    io.emit('demand:resolved', {
+      stopId, stopName: stopById[stopId].name, routeId: bus.routeId,
+      routeName: routeById[bus.routeId].name,
+      served, busId: bus.id, remaining,
+      offCount,
+      waitDuration: Math.round(waitDuration * 10) / 10,
+      overflow: remaining > 0,
+      nextBusId, nextEta,
+      boardedDests
+    });
   }
+
   bus.crowd = autoCrowd(bus.onboard);
   return served;
 }
@@ -381,6 +460,14 @@ function calculateSchedule() {
       const sb = standbyBusForRoute(routeId);
       const ws = state.waitStats[s.id + '_' + routeId];
       const avgWait = ws && ws.count ? Math.round(ws.total / ws.count * 10) / 10 : 0;
+      // v8: 目的地 Top3
+      const destList = Object.entries(d.dests || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([destId, cnt]) => ({ destId: parseInt(destId), destName: stopById[destId] ? stopById[destId].name : '?', count: cnt }));
+      // v8: 该站溢出历史
+      const ovKey = s.id + '_' + routeId;
+      const overflowTotal = state.overflowStats[ovKey] || 0;
       result.push({
         id: s.id, name: s.name, lat: s.lat, lng: s.lng,
         routeId, routeName: routeById[routeId].name,
@@ -392,7 +479,9 @@ function calculateSchedule() {
         priority, eta,
         nearestBusId: nb ? nb.bus.id : null,
         suggestDispatch: priority === 'high',
-        nearbyBusId: sb ? sb.id : null
+        nearbyBusId: sb ? sb.id : null,
+        destList,
+        overflowTotal
       });
     }
   }
@@ -431,13 +520,23 @@ function getFullState() {
   return {
     stops: demandList,
     capacity: CAPACITY,
-    buses: buses.map(b => ({
-      id: b.id, driver: b.driver, routeId: b.routeId, status: b.status, shift: b.shift,
-      lat: b.lat, lng: b.lng, crowd: b.crowd, speed: b.speed,
-      currentStopName: b.currentStopName, nextStopName: b.nextStopName,
-      autoMove: b.autoMove, totalServed: b.totalServed, totalTrips: b.totalTrips,
-      onboard: b.onboard, lapsCompleted: b.lapsCompleted
-    })),
+    buses: buses.map(b => {
+      const route = routeById[b.routeId];
+      const nextStopId = route ? route.stopIds[(b.currentStopIdx + 1) % route.stopIds.length] : null;
+      const offNext = (b.passengers && b.passengers[nextStopId]) || 0;
+      // v8: 车上乘客去向明细 (Top5)
+      const destSummary = Object.entries(b.passengers || {})
+        .sort((a, b2) => b2[1] - a[1])
+        .slice(0, 5)
+        .map(([destId, cnt]) => ({ destId: parseInt(destId), destName: stopById[destId] ? stopById[destId].name : '?', count: cnt }));
+      return {
+        id: b.id, driver: b.driver, routeId: b.routeId, status: b.status, shift: b.shift,
+        lat: b.lat, lng: b.lng, crowd: b.crowd, speed: b.speed,
+        currentStopName: b.currentStopName, nextStopName: b.nextStopName,
+        autoMove: b.autoMove, totalServed: b.totalServed, totalTrips: b.totalTrips,
+        onboard: b.onboard, offNext, destSummary, lapsCompleted: b.lapsCompleted
+      };
+    }),
     restArea: REST_AREA,
     schedule,
     timePeriod: getTimePeriod(),
@@ -461,7 +560,23 @@ function getFullState() {
     stats: (() => {
       let tot = 0, cnt = 0;
       Object.values(state.waitStats).forEach(w => { tot += w.total; cnt += w.count; });
-      return { avgWait: cnt ? Math.round(tot / cnt * 10) / 10 : 0, samples: cnt };
+      // v8: 溢出统计
+      let overflowTotal = 0;
+      Object.values(state.overflowStats || {}).forEach(v => overflowTotal += v);
+      // v8: OD 热力 Top8
+      const odTop = Object.entries(state.odStats || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([key, cnt]) => {
+          const [from, to] = key.split('_').map(Number);
+          return { fromId: from, fromName: stopById[from] ? stopById[from].name : '?', toId: to, toName: stopById[to] ? stopById[to].name : '?', count: cnt };
+        });
+      return {
+        avgWait: cnt ? Math.round(tot / cnt * 10) / 10 : 0,
+        samples: cnt,
+        overflow: overflowTotal,
+        odTop
+      };
     })()
   };
 }
@@ -511,6 +626,7 @@ function tickBus(bus) {
     if (nextId === 1) {
       bus.lapsCompleted++;
       bus.onboard = 0;
+      bus.passengers = {};
       bus.crowd = 'empty';
     }
     bus.nextStopName = stopById[ids[(bus.currentStopIdx + 1) % ids.length]].name;
@@ -533,14 +649,37 @@ app.get('/api/routes', (req, res) => {
 app.get('/api/timetable', (req, res) => res.json(timetable));
 app.get('/api/state', (req, res) => res.json(getFullState()));
 
-// ① 上报候车需求 (需带 routeId 一线/二线) → 返回该线最近班车 ETA
+// ① 上报候车需求 (需带 routeId + destStopId) → 返回该线最近班车 ETA
 app.post('/api/demand', (req, res) => {
   const id = parseInt(req.body.stopId);
   const routeId = parseInt(req.body.routeId) || 1;
+  const destStopId = parseInt(req.body.destStopId);
   if (!id || !stopById[id]) return res.status(400).json({ error: 'invalid stopId' });
   if (![1, 2].includes(routeId)) return res.status(400).json({ error: '请选择一线或二线' });
+
+  // v8: 校验目的站 — 必须在同线路后续站点中
+  const route = routeById[routeId];
+  const stopIdx = route.stopIds.indexOf(id);
+  if (stopIdx === -1) return res.status(400).json({ error: '该站不在此线路中' });
+
+  let finalDest = destStopId;
+  if (!finalDest) {
+    // 未选目的站时自动随机分配 (兜底)
+    const candidates = [];
+    for (let i = stopIdx + 1; i < route.stopIds.length - 1; i++) {
+      candidates.push(route.stopIds[i]);
+    }
+    finalDest = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : id;
+  } else {
+    const destIdx = route.stopIds.indexOf(finalDest);
+    if (destIdx === -1 || destIdx <= stopIdx) {
+      return res.status(400).json({ error: '目的站无效或不在该线路后续站点中' });
+    }
+  }
+
   const d = ensureDemand(id, routeId);
   d.count++;
+  d.dests[finalDest] = (d.dests[finalDest] || 0) + 1;
   const schedule = calculateSchedule();
   const target = schedule.find(s => s.id === id && s.routeId === routeId);
   const eta = target ? target.eta : 0;
@@ -550,12 +689,14 @@ app.post('/api/demand', (req, res) => {
   io.emit('demand:new', {
     stopId: id, stopName: stopById[id].name,
     routeId, routeName: routeById[routeId].name,
-    count: d.count, eta, busId
+    count: d.count, eta, busId,
+    destStopId: finalDest, destStopName: stopById[finalDest] ? stopById[finalDest].name : '?'
   });
   broadcastState();
   res.json({
     success: true, stopName: stopById[id].name,
     routeId, routeName: routeById[routeId].name,
+    destStopName: stopById[finalDest] ? stopById[finalDest].name : '?',
     waitCount: d.count, eta, busId, full
   });
 });
@@ -594,7 +735,7 @@ app.post('/api/bus/arrive', (req, res) => {
   bus.currentStopName = nxt.name;
   bus.dwell = DWELL_TICKS;
   serveStop(bus, nextId);
-  if (nextId === 1) { bus.lapsCompleted++; bus.onboard = 0; bus.crowd = 'empty'; }
+  if (nextId === 1) { bus.lapsCompleted++; bus.onboard = 0; bus.passengers = {}; bus.crowd = 'empty'; }
   bus.nextStopName = stopById[route.stopIds[(bus.currentStopIdx + 1) % route.stopIds.length]].name;
   broadcastState();
   res.json({ success: true });
@@ -623,6 +764,7 @@ app.post('/api/bus/route', (req, res) => {
   bus.nextStopName = stopById[route.stopIds[1]].name;
   bus.crowd = 'empty';
   bus.onboard = 0;
+  bus.passengers = {};
   broadcastState();
   res.json({ success: true, routeId, routeName: route.name, busId });
 });
@@ -642,6 +784,7 @@ app.post('/api/bus/recall', (req, res) => {
   bus.nextStopName = '待派车';
   bus.crowd = 'empty';
   bus.onboard = 0;
+  bus.passengers = {};
   broadcastState();
   res.json({ success: true });
 });
@@ -682,6 +825,7 @@ app.post('/api/simulate/peak', (req, res) => {
     const d = ensureDemand(stop.id, routeId);
     d.count = people;
     d.firstDemandAt = Date.now() - minutesAgo * 60000;
+    d.dests = randomDests(stop.id, routeId, people);
     generated.push({ stopId: stop.id, stopName: stop.name, routeId, count: people, waitMinutes: minutesAgo });
   }
   broadcastState();
@@ -712,6 +856,7 @@ app.post('/api/demo/evening-rush', (req, res) => {
     const d = ensureDemand(stopId, routeId);
     d.count = count;
     d.firstDemandAt = Date.now();
+    d.dests = randomDests(stopId, routeId, count);
     generated.push({ stopId, stopName: stopById[stopId].name, routeId, count });
   });
   broadcastState();
@@ -721,10 +866,12 @@ app.post('/api/demo/evening-rush', (req, res) => {
 // 清空
 app.post('/api/clear', (req, res) => {
   state.demands = {};
+  state.overflowStats = {};
   buses.forEach(b => {
     b.totalServed = 0;
     b.totalTrips = 0;
     b.onboard = 0;
+    b.passengers = {};
     b.crowd = 'empty';
   });
   state.exceptions = [];

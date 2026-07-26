@@ -174,13 +174,14 @@ function renderMyWaits() {
         if (sc) { eta = sc.eta; busId = sc.nearestBusId; }
       }
     }
+    const destTxt = w.destStopName ? ` → ${w.destStopName}` : '';
     const etaText = busId ? `最近 ${busId} 约 ${eta} 分钟到站` : '暂无该线运营车，请耐心等待';
     if (w.overflowTip) {
       return `
       <div class="list-item">
         <div style="width: 34px; height: 34px; border-radius: 50%; background: #D97706; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">!</div>
         <div class="li-main">
-          <div class="li-title">${w.stopName} · ${w.routeName} <span class="tag tag-warning">满载滞留</span></div>
+          <div class="li-title">${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-warning">满载滞留</span></div>
           <div class="li-sub" style="color:#D97706">${w.overflowTip}</div>
         </div>
       </div>
@@ -193,7 +194,7 @@ function renderMyWaits() {
       <div class="list-item">
         <div style="width: 34px; height: 34px; border-radius: 50%; background: #2563EB; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">${w.routeId === 1 ? '一' : '二'}</div>
         <div class="li-main">
-          <div class="li-title">${w.stopName} · ${w.routeName} <span class="tag tag-danger">该线 ${cnt} 人</span></div>
+          <div class="li-title">${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-danger">该线 ${cnt} 人</span></div>
           <div class="li-sub">${etaText}</div>
         </div>
       </div>
@@ -225,15 +226,16 @@ function handleDemandResolved(d) {
     if (d.overflow) {
       // 本班满载没接走: 保留等待卡, 提示下一班
       const nextTxt = d.nextBusId
-        ? `本班 ${d.busId} 已满载，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
-        : `本班 ${d.busId} 已满载，请等下一班`;
+        ? `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
+        : `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，请等下一班`;
       App.toast('⚠️ ' + nextTxt, 4200);
       myWaits[idx].overflowTip = nextTxt;
       saveMyWaits();
       renderMyWaits();
     } else {
       const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
-      App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，请上车！${waitTxt}`, 3800);
+      const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
+      App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，上车${d.served}人${offTxt}${waitTxt}`, 3800);
       myWaits.splice(idx, 1);
       saveMyWaits();
       renderMyWaits();
@@ -295,20 +297,46 @@ function stopRow(s) {
     </div>`;
 }
 
-// ① 上报时先选线路
+// ① 上报: 先选线路, 再选目的地 (v8 OD 模型)
 function reportDemand(stopId) {
   const s = stopsCache.find(x => x.id === stopId);
   if (!s) return;
   App.showModal(`
     <div class="modal-title">🚏 ${s.name} · 选择乘坐线路</div>
     <div class="grid-2" style="gap: 10px; margin-top: 6px;">
-      <button class="btn btn-lg" onclick="doReport(${stopId}, 1)">一线</button>
-      <button class="btn btn-lg btn-outline" onclick="doReport(${stopId}, 2)">二线</button>
+      <button class="btn btn-lg" onclick="selectDest(${stopId}, 1)">一线</button>
+      <button class="btn btn-lg btn-outline" onclick="selectDest(${stopId}, 2)">二线</button>
     </div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
 
-async function doReport(stopId, routeId) {
+function selectDest(stopId, routeId) {
+  const route = routesCache.find(r => r.id === routeId);
+  if (!route) return;
+  const stopIdx = route.stopIds.indexOf(stopId);
+  const destOptions = [];
+  for (let i = stopIdx + 1; i < route.stopIds.length - 1; i++) {
+    const sid = route.stopIds[i];
+    const stop = stopsCache.find(s => s.id === sid);
+    if (stop) destOptions.push(stop);
+  }
+  if (destOptions.length === 0) {
+    doReport(stopId, routeId, null);
+    return;
+  }
+  const destHtml = destOptions.map(d =>
+    `<button class="btn btn-outline btn-block" style="margin: 4px 0; text-align: left; padding: 12px;" onclick="doReport(${stopId}, ${routeId}, ${d.id})">📍 ${d.name}</button>`
+  ).join('');
+  const stopName = stopsCache.find(s => s.id === stopId).name;
+  const routeName = routeId === 1 ? '一线' : '二线';
+  App.showModal(`
+    <div class="modal-title">🚏 ${stopName} · ${routeName} → 要去哪站？</div>
+    <div class="text-sm text-2 mb-2">选择下车站 (系统将按目的地调度空位)</div>
+    ${destHtml}
+    <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
+}
+
+async function doReport(stopId, routeId, destStopId) {
   App.closeModal();
   App.toast('上报中...', 800);
   try {
@@ -317,19 +345,19 @@ async function doReport(stopId, routeId) {
     const res = await fetch(API_BASE + '/api/demand', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stopId, routeId }),
+      body: JSON.stringify({ stopId, routeId, destStopId }),
       signal: controller.signal
     });
     clearTimeout(timeout);
     const data = await res.json();
     if (data.success) {
       myWaits = myWaits.filter(w => !(w.stopId === stopId && w.routeId === routeId));
-      myWaits.unshift({ stopId, routeId, stopName: data.stopName, routeName: data.routeName, time: Date.now() });
+      myWaits.unshift({ stopId, routeId, destStopName: data.destStopName || '?', stopName: data.stopName, routeName: data.routeName, time: Date.now() });
       saveMyWaits();
       renderMyWaits();
       const tip = data.busId
-        ? `${data.stopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟${data.full ? '（该班可能满载，建议留意下一班）' : ''}`
-        : `${data.stopName} ${data.routeName} 已上报`;
+        ? `${data.stopName}→${data.destStopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟${data.full ? '（该班可能满载，建议留意下一班）' : ''}`
+        : `${data.stopName}→${data.destStopName} ${data.routeName} 已上报`;
       App.toast('✓ ' + tip, 3000);
     } else {
       App.toast('上报失败: ' + (data.error || '未知错误'));
@@ -354,11 +382,11 @@ function renderRouteDetail() {
     const d = stopMap[id];
     const waitCount = d ? (currentRouteId === 1 ? d.wait1 : d.wait2) : 0;
     return `
-      <div class="list-item" onclick="doReport(${id}, ${currentRouteId})" style="cursor: pointer;">
+      <div class="list-item" onclick="reportDemand(${id})" style="cursor: pointer;">
         <div style="width: 30px; height: 30px; border-radius: 50%; background: ${waitCount > 0 ? '#DC2626' : '#F3F4F6'}; color: ${waitCount > 0 ? '#fff' : '#6B7280'}; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">${idx + 1}</div>
         <div class="li-main">
           <div class="li-title">${stop.name}${waitCount > 0 ? ` <span class="tag tag-danger">${waitCount}人</span>` : ''}</div>
-          <div class="li-sub">${idx === route.stopIds.length - 1 ? '返回中和楼 (闭环)' : '点击上报' + route.name + '等车'}</div>
+          <div class="li-sub">${idx === route.stopIds.length - 1 ? '返回中和楼 (闭环)' : '点击选择目的地并上报' + route.name + '等车'}</div>
         </div>
         <span class="li-action">+</span>
       </div>`;

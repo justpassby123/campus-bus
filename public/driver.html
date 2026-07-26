@@ -96,7 +96,13 @@
             <button class="btn" data-crowd="medium" style="padding: 12px;">🟡 适中</button>
             <button class="btn btn-outline" data-crowd="crowded" style="padding: 12px;">🔴 拥挤</button>
           </div>
-          <div class="text-sm text-2 mt-3">当前载客 <b id="d-onboard">0</b> 人 · 核定 <b id="d-capacity">22</b> 人</div>
+          <div class="text-sm text-2 mt-3">当前载客 <b id="d-onboard">0</b>/<b id="d-capacity">25</b> 人 · 下站下车 <b id="d-off-next">0</b> 人</div>
+        </div>
+
+        <!-- v8: 车上乘客去向 -->
+        <div class="card">
+          <div class="card-title">🎫 车上乘客去向</div>
+          <div id="d-dest-summary" class="text-2 text-sm">暂无乘客</div>
         </div>
       </div>
 
@@ -160,6 +166,12 @@
           <div id="dp-operating">
             <div class="text-2 text-center" style="padding: 12px;">加载中...</div>
           </div>
+        </div>
+
+        <!-- v8: OD 热力 + 溢出统计 -->
+        <div class="card">
+          <div class="card-title">📊 OD 热力 & 溢出统计</div>
+          <div id="dp-od-stats" class="text-2 text-sm">加载中...</div>
         </div>
       </div>
 

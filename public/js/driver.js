@@ -143,7 +143,21 @@ function renderAll() {
 
   // 载客量
   document.getElementById('d-onboard').textContent = cur.onboard || 0;
-  document.getElementById('d-capacity').textContent = s.capacity || 22;
+  document.getElementById('d-capacity').textContent = s.capacity || 25;
+  document.getElementById('d-off-next').textContent = cur.offNext || 0;
+
+  // v8: 车上乘客去向
+  const destEl = document.getElementById('d-dest-summary');
+  if (destEl) {
+    const dests = cur.destSummary || [];
+    if (dests.length === 0) {
+      destEl.innerHTML = '暂无乘客';
+    } else {
+      destEl.innerHTML = dests.map(d =>
+        `<span class="tag" style="margin: 2px;">${d.destName} ${d.count}人</span>`
+      ).join('');
+    }
+  }
 
   // 状态按钮
   const btnArrive = document.getElementById('btn-arrive');
@@ -183,7 +197,7 @@ function selectBus(id) {
   renderAll();
 }
 
-// ① 需求列表: 每站两线人数并列显示
+// ① 需求列表: 每站两线人数并列显示 + v8 目的地标签
 function renderDemandList() {
   const s = App.state;
   const list = document.getElementById('d-demand-list');
@@ -205,6 +219,14 @@ function renderDemandList() {
     const sub = [];
     if (st.wait1 > 0 && e1) sub.push(`一线最近 ${e1.nearestBusId || '无车'}${e1.nearestBusId ? ' 约' + e1.eta + '分' : ''}`);
     if (st.wait2 > 0 && e2) sub.push(`二线最近 ${e2.nearestBusId || '无车'}${e2.nearestBusId ? ' 约' + e2.eta + '分' : ''}`);
+    // v8: 目的地标签
+    let destTags = '';
+    if (e1 && e1.destList && e1.destList.length > 0) {
+      destTags += e1.destList.map(d => `<span class="tag" style="font-size:10px; margin:1px;">一线→${d.destName} ${d.count}</span>`).join('');
+    }
+    if (e2 && e2.destList && e2.destList.length > 0) {
+      destTags += e2.destList.map(d => `<span class="tag tag-accent" style="font-size:10px; margin:1px;">二线→${d.destName} ${d.count}</span>`).join('');
+    }
     return `
       <div class="list-item">
         <div style="width: 30px; height: 30px; border-radius: 50%; background: #F3F4F6; color:#374151; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px;">${st.name.slice(0,1)}</div>
@@ -214,6 +236,7 @@ function renderDemandList() {
             ${st.wait2 > 0 ? `<span class="tag tag-accent">二线 ${st.wait2}</span>` : ''}
           </div>
           <div class="li-sub">${sub.join(' · ') || '等待中'}</div>
+          ${destTags ? `<div style="margin-top:4px;">${destTags}</div>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -230,7 +253,8 @@ function renderDispatch() {
   const hw = document.getElementById('dp-headway');
   if (hw && s.fleet) {
     const avg = s.stats && s.stats.samples ? ` · 累计均候 ${s.stats.avgWait} 分(${s.stats.samples}次)` : '';
-    hw.textContent = `运营 ${s.fleet.operating} 辆 · 待命 ${s.fleet.resting || 0} 辆${avg}`;
+    const ovf = s.stats && s.stats.overflow ? ` · 溢出 ${s.stats.overflow}人` : '';
+    hw.textContent = `运营 ${s.fleet.operating} 辆 · 待命 ${s.fleet.resting || 0} 辆${avg}${ovf}`;
   }
   const btnPeak = document.getElementById('btn-peak');
   if (btnPeak) {
@@ -258,12 +282,18 @@ function renderDispatch() {
       const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
         ? `<button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="quickDispatch('${d.nearbyBusId}', ${d.routeId})">⚡ 一键增发</button>`
         : '';
+      // v8: 目的地标签
+      const destTags = (d.destList || []).map(dst =>
+        `<span class="tag" style="font-size:10px; margin:1px;">→${dst.destName} ${dst.count}</span>`
+      ).join('');
+      const ovTag = d.overflowTotal > 0 ? `<span class="tag tag-warning" style="font-size:10px;">历史溢出${d.overflowTotal}人</span>` : '';
       return `
         <div class="list-item" ${hi ? 'style="background:#FEF3C7;border-radius:6px;padding:10px;"' : ''}>
           <div style="width:26px;height:26px;border-radius:50%;background:${pc};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;">${i + 1}</div>
           <div class="li-main">
-            <div class="li-title">${d.name} · ${d.routeName} <span class="tag tag-danger">${d.waitCount}人</span></div>
+            <div class="li-title">${d.name} · ${d.routeName} <span class="tag tag-danger">${d.waitCount}人</span> ${ovTag}</div>
             <div class="li-sub">已等 ${d.waitDuration} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}${d.avgWait ? ' · 历史均候 ' + d.avgWait + '分' : ''}${hi ? ' · 建议优先增发' : ''}</div>
+            ${destTags ? `<div style="margin-top:3px;">${destTags}</div>` : ''}
           </div>
           ${dispatchBtn}
         </div>`;
@@ -293,16 +323,50 @@ function renderDispatch() {
   const opEl = document.getElementById('dp-operating');
   opEl.innerHTML = ops.map(b => {
     const rn = (routesCache.find(r => r.id === b.routeId) || {}).name || '';
+    const offTag = b.offNext > 0 ? ` · 下站下${b.offNext}人` : '';
     return `
       <div class="list-item">
         <div style="width:34px;height:34px;border-radius:50%;background:#1F2937;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;">${b.id.replace('#','')}</div>
         <div class="li-main">
           <div class="li-title">${b.id} · ${rn} · ${App.crowdText(b.crowd)}</div>
-          <div class="li-sub">${b.currentStopName} → ${b.nextStopName} · 载客 ${b.onboard}/${s.capacity || 22}</div>
+          <div class="li-sub">${b.currentStopName} → ${b.nextStopName} · 载客 ${b.onboard}/${s.capacity || 25}${offTag}</div>
         </div>
         <button class="btn btn-sm btn-outline" onclick="recallBus('${b.id}')">召回</button>
       </div>`;
   }).join('');
+
+  // v8: OD 热力 & 溢出统计
+  const odEl = document.getElementById('dp-od-stats');
+  if (odEl) {
+    const stats = s.stats || {};
+    const odTop = stats.odTop || [];
+    const overflow = stats.overflow || 0;
+    let html = '';
+    if (overflow > 0) {
+      html += `<div class="font-bold text-sm mb-2" style="color:#D97706;">⚠️ 累计满载溢出 ${overflow} 人次 (未能首班接走的乘客)</div>`;
+    }
+    if (odTop.length === 0) {
+      html += '<div class="text-2 text-center" style="padding:8px;">暂无OD数据</div>';
+    } else {
+      html += '<div class="font-bold text-sm mb-2">🔥 热门出行 OD Top8</div>';
+      html += odTop.map((od, i) => {
+        const max = odTop[0].count;
+        const pct = Math.round(od.count / max * 100);
+        return `
+          <div style="margin-bottom:6px;">
+            <div class="flex gap-2" style="align-items:center; font-size:13px;">
+              <span style="width:18px; color:#9CA3AF;">${i+1}</span>
+              <span><b>${od.fromName}</b> → <b>${od.toName}</b></span>
+              <span class="tag tag-danger" style="margin-left:auto;">${od.count}人次</span>
+            </div>
+            <div style="height:4px; background:#F3F4F6; border-radius:2px; margin-top:2px;">
+              <div style="height:4px; width:${pct}%; background:#2563EB; border-radius:2px;"></div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+    odEl.innerHTML = html;
+  }
 }
 
 function dispatchBus(id, routeId) {

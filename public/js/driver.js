@@ -75,7 +75,6 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
   const el = document.getElementById('tab-' + tab);
   if (el) el.classList.remove('hidden');
-  if (tab === 'route') renderRoute();
   if (tab === 'dispatch') renderDispatch();
   if (tab === 'attendance') renderAttendance();
   if (tab === 'exception') renderExceptions();
@@ -117,7 +116,8 @@ function renderAll() {
   const route = routesCache.find(r => r.id === cur.routeId) || routesCache[0];
   document.getElementById('d-bus-id').textContent = '车辆 ' + cur.id;
   document.getElementById('d-driver').textContent = '司机：' + cur.driver + (cur.shift ? ' · ' + cur.shift : '');
-  document.getElementById('d-route-name').textContent = route.name;
+  const routeTag = document.getElementById('d-route-tag');
+  if (routeTag) { routeTag.textContent = route.name; routeTag.className = 'tag tag-' + (cur.routeId === 2 ? 'warning' : 'accent'); }
   document.getElementById('d-status-info').textContent = App.statusText(cur.status);
   document.getElementById('d-status-info').className = 'tag tag-' + App.statusClass(cur.status);
   document.getElementById('d-current-stop').textContent = cur.currentStopName;
@@ -127,9 +127,6 @@ function renderAll() {
   const ops = s.buses.filter(b => b.status === 'operating');
   const parkedBuses = s.buses.filter(b => b.status !== 'operating');
   MapView.render('map-driver', s.stops, ops, { restArea: s.restArea, parkedBuses, routes: routesCache });
-
-  // 需求列表 (两线并列)
-  renderDemandList();
 
   // 拥挤度按钮
   document.querySelectorAll('#d-crowd-group [data-crowd]').forEach(b => {
@@ -197,10 +194,10 @@ function selectBus(id) {
   renderAll();
 }
 
-// ① 需求列表: 每站两线人数并列显示 + v8 目的地标签
+// ① 需求列表: (已合并到调度页站点列表, 保留函数兼容)
 function renderDemandList() {
-  const s = App.state;
   const list = document.getElementById('d-demand-list');
+  if (!list) return;
   const cnt = document.getElementById('d-demand-count');
   const waited = (s.stops || []).filter(st => st.waitCount > 0);
   const total = waited.reduce((sum, st) => sum + st.waitCount, 0);
@@ -242,13 +239,16 @@ function renderDemandList() {
   }).join('');
 }
 
-// ③ 调度台
+// ③ 调度台 (含环线站点+调度管理+OD统计)
 function renderDispatch() {
   const s = App.state;
   if (!s) return;
   const sched = s.schedule || [];
 
-  // 高峰状态 + 车队计数 (不再展示"间隔")
+  // 环线站点·实时候车 (合并自行程页)
+  renderDispatchStops();
+
+  // 高峰状态 + 车队计数
   const peak = s.peak || { active: false, manual: false, label: '' };
   const hw = document.getElementById('dp-headway');
   if (hw && s.fleet) {
@@ -418,25 +418,61 @@ function recallBus(id) {
   });
 }
 
-function renderRoute() {
+// 环线站点·实时候车 (合并自旧行程页，增加实时需求/ETA)
+function renderDispatchStops() {
   if (!App.state || !routesCache.length || !stopsCache.length) return;
+  const s = App.state;
   const cur = getBus(currentBusId);
   const curRouteId = cur ? cur.routeId : 1;
   const route = routesCache.find(r => r.id === curRouteId) || routesCache[0];
   const curIdx = cur ? (cur.currentStopIdx || 0) : 0;
+  const sched = s.schedule || [];
+  const stopMap = {};
+  (s.stops || []).forEach(st => { stopMap[st.id] = st; });
 
-  document.getElementById('r-stops-list').innerHTML = route.stopIds.map((id, idx) => {
-    const stop = stopsCache.find(s => s.id === id);
+  const el = document.getElementById('dp-stops-list');
+  if (!el) return;
+  el.innerHTML = route.stopIds.map((id, idx) => {
+    const stop = stopsCache.find(x => x.id === id);
     if (!stop) return '';
     const isLoopEnd = idx === route.stopIds.length - 1;
+    const isCurrent = idx === curIdx;
+    const isPassed = idx < curIdx;
+    const d = stopMap[id];
+    const wait1 = d ? d.wait1 : 0;
+    const wait2 = d ? d.wait2 : 0;
+    const hasWait = wait1 > 0 || wait2 > 0;
+    const sc1 = sched.find(x => x.id === id && x.routeId === 1);
+    const sc2 = sched.find(x => x.id === id && x.routeId === 2);
+    const eta1 = sc1 && sc1.eta ? sc1.eta : 0;
+    const eta2 = sc2 && sc2.eta ? sc2.eta : 0;
+    // 建筑类型
+    const bldg = buildingType(stop.name);
+    const numColor = isCurrent ? '#2563EB' : isPassed ? '#D1D5DB' : '#9CA3AF';
+    const bg = isCurrent ? '#EFF6FF' : 'transparent';
     return `
-      <div class="list-item">
-        <div style="width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 1.5px solid #E5E7EB; color: #9CA3AF; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">${idx + 1}</div>
+      <div class="list-item" style="background:${bg}; border-radius:6px; padding:8px 4px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#fff;border:1.5px solid ${numColor};color:${numColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">${idx + 1}</div>
         <div class="li-main">
-          <div class="li-title">${stop.name}${isLoopEnd ? ' <span class="tag">回起点</span>' : ''}</div>
+          <div class="li-title">${bldg.icon} ${stop.name}${isLoopEnd ? ' <span class="tag">回起点</span>' : ''}${isCurrent ? ' <span class="tag tag-accent">当前位置</span>' : ''}</div>
+          <div class="li-sub">
+            ${bldg.label}
+            ${wait1 > 0 ? ` · <span style="color:#DC2626;">一线 ${wait1}人${eta1 ? '(' + eta1 + '分)' : ''}</span>` : ''}
+            ${wait2 > 0 ? ` · <span style="color:#EA580C;">二线 ${wait2}人${eta2 ? '(' + eta2 + '分)' : ''}</span>` : ''}
+            ${!hasWait && !isLoopEnd ? ' · 无候车' : ''}
+          </div>
         </div>
       </div>`;
   }).join('');
+}
+
+// 站点建筑类型
+function buildingType(name) {
+  if (name.includes('餐厅')) return { icon: '🍽️', label: '餐饮区', color: '#F59E0B' };
+  if (name.includes('南门')) return { icon: '🚪', label: '校门', color: '#8B5CF6' };
+  if (name.includes('楼')) return { icon: '🏫', label: '教学楼', color: '#2563EB' };
+  if (name.includes('园') || name.includes('竹苑') || name.includes('润园')) return { icon: '🏠', label: '宿舍区', color: '#16A34A' };
+  return { icon: '📍', label: '校园站点', color: '#6B7280' };
 }
 
 function renderAttendance() {

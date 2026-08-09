@@ -105,6 +105,11 @@ window.App = {
     const letter = str.trim() && str.trim() !== '—' ? str.trim().charAt(0).toUpperCase() : '';
     const content = letter || `<svg width="${size * 0.45}" height="${size * 0.45}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="5" fill="white" fill-opacity="0.95"/><path d="M3 21c0-5 4-8 9-8s9 3 9 8" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>`;
     return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg,${c1},${c2});color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:${size * 0.45}px;flex-shrink:0;user-select:none;overflow:hidden;">${content}</div>`;
+  },
+
+  // 圆形 emoji 头像：用于司机 / 学生等人物头像（轻量、辨识度高）
+  emojiAvatar(emoji, size = 36, bg = '#F3F4F6') {
+    return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.55)}px;flex-shrink:0;line-height:1;">${emoji}</div>`;
   }
 };
 

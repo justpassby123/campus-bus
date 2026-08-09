@@ -116,8 +116,7 @@ function renderAll() {
   const route = routesCache.find(r => r.id === cur.routeId) || routesCache[0];
   const busNum = cur.id.replace('#','');
   document.getElementById('d-bus-id').textContent = '车辆 ' + busNum;
-  const avatar = document.getElementById('d-avatar');
-  if (avatar) avatar.innerHTML = App.avatar(cur.driver, 42);
+  // 本车卡头像为静态 emoji (🚌), 无需 JS 注入
   document.getElementById('d-driver').textContent = '司机：' + cur.driver + (cur.shift ? ' · ' + cur.shift : '');
   const routeTag = document.getElementById('d-route-tag');
   if (routeTag) { routeTag.textContent = route.name; routeTag.className = 'tag tag-' + (cur.routeId === 2 ? 'warning' : 'accent'); }
@@ -187,10 +186,7 @@ function renderAll() {
 
   document.getElementById('d-period').textContent = App.periodText(s.timePeriod) + '时段';
 
-  // 我的页面头像
-  const meAvatar = document.getElementById('me-avatar');
-  if (meAvatar) meAvatar.innerHTML = App.avatar(cur.driver, 48);
-
+  // 我的页面头像为静态 emoji (🚌), 无需 JS 注入
   if (currentTab === 'dispatch') renderDispatch();
 }
 
@@ -199,7 +195,7 @@ function renderFleetGrid(buses) {
   el.innerHTML = buses.map(b => {
     const sel = b.id === currentBusId ? 'outline: 2px solid #2563EB; outline-offset: 1px;' : '';
     return `<div onclick="selectBus('${b.id}')" style="text-align:center; padding:8px 4px; border-radius:6px; ${b.status === 'resting' ? 'border: 1px dashed #6B7280;' : ''} ${sel}">
-      <div style="display:flex; justify-content:center; margin-bottom:4px;">${App.avatar(b.driver, 30)}</div>
+      <div style="display:flex; justify-content:center; margin-bottom:4px;">${App.emojiAvatar('🚌', 30)}</div>
       <div style="font-size:12px; font-weight:600; color:#111827;">${b.id.replace('#','')}</div>
       <div style="font-size:10px; font-weight:400; color:#6B7280;">${App.statusText(b.status)}</div>
     </div>`;
@@ -324,7 +320,7 @@ function renderDispatch() {
     ? '<div class="text-2 text-center" style="padding: 12px;">无可用车辆</div>'
     : avail.map(b => `
       <div class="list-item">
-        ${App.avatar(b.driver, 34)}
+        ${App.emojiAvatar('🚌', 34)}
         <div class="li-main">
           <div class="li-title">${b.id} <span class="tag">${App.statusText(b.status)}</span></div>
           <div class="li-sub">司机 ${b.driver} · 停沁园休息区</div>
@@ -343,7 +339,7 @@ function renderDispatch() {
     const offTag = b.offNext > 0 ? ` · 下站下${b.offNext}人` : '';
     return `
       <div class="list-item">
-        ${App.avatar(b.driver, 34)}
+        ${App.emojiAvatar('🚌', 34)}
         <div class="li-main">
           <div class="li-title">${b.id} · ${rn} · ${App.crowdText(b.crowd)}</div>
           <div class="li-sub">${b.currentStopName} → ${b.nextStopName} · 载客 ${b.onboard}/${s.capacity || 25}${offTag}</div>

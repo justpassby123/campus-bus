@@ -114,12 +114,19 @@ function renderAll() {
 
   // 当前车辆
   const route = routesCache.find(r => r.id === cur.routeId) || routesCache[0];
-  document.getElementById('d-bus-id').textContent = '车辆 ' + cur.id;
+  const busNum = cur.id.replace('#','');
+  document.getElementById('d-bus-id').textContent = '车辆 ' + busNum;
+  const avatar = document.getElementById('d-avatar');
+  if (avatar) avatar.textContent = '#' + busNum;
   document.getElementById('d-driver').textContent = '司机：' + cur.driver + (cur.shift ? ' · ' + cur.shift : '');
   const routeTag = document.getElementById('d-route-tag');
   if (routeTag) { routeTag.textContent = route.name; routeTag.className = 'tag tag-' + (cur.routeId === 2 ? 'warning' : 'accent'); }
-  document.getElementById('d-status-info').textContent = App.statusText(cur.status);
-  document.getElementById('d-status-info').className = 'tag tag-' + App.statusClass(cur.status);
+  // 左侧状态色条 (iOS化)
+  const bar = document.getElementById('d-status-bar');
+  if (bar) {
+    const sc = App.statusClass(cur.status);
+    bar.style.background = sc === 'success' ? 'var(--success)' : sc === 'warning' ? 'var(--warning)' : 'var(--gray-400)';
+  }
   document.getElementById('d-current-stop').textContent = cur.currentStopName;
   document.getElementById('d-next-stop').textContent = cur.nextStopName;
 

@@ -20,7 +20,7 @@
         <!-- 休息区面板 (仅在resting状态显示) -->
         <div id="d-rest-panel" class="card hidden" style="background: var(--gray-50); border-color: var(--gray-300);">
           <div class="card-title">
-            <span>🅿️ 沁园休息区</span>
+            <span>沁园休息区</span>
             <span class="more" id="d-rest-laps">完成 1 圈</span>
           </div>
           <div class="grid-2" style="gap: 8px;">
@@ -29,28 +29,31 @@
           </div>
         </div>
 
-        <!-- 本车状态 (合并：车辆信息+拥挤度+去向) -->
-        <div class="card">
+        <!-- 本车状态 (iOS 精简) -->
+        <div class="card" style="position:relative; padding-left: 18px;">
+          <div style="position:absolute; left:0; top:0; bottom:0; width:4px; background: var(--success); border-radius:8px 0 0 8px;" id="d-status-bar"></div>
           <div class="flex gap-3" style="align-items: center;">
-            <div style="font-size: 32px;">🚌</div>
+            <div style="width:42px; height:42px; border-radius:50%; background: #1F2937; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;" id="d-avatar">#01</div>
             <div class="flex-1">
-              <div class="text-lg font-bold" id="d-bus-id">车辆 #01</div>
+              <div class="text-lg font-bold" id="d-bus-id">车辆 01</div>
               <div class="text-sm text-2" id="d-driver">司机：张建国</div>
             </div>
-            <span class="tag tag-success" id="d-status-info">运营中</span>
           </div>
-          <div style="margin-top: 10px; padding: 8px 12px; background: var(--gray-50); border-radius: 6px;">
-            <div class="text-sm">📍 当前：<b id="d-current-stop">沁园</b> → 下一站 <b id="d-next-stop">中和楼</b></div>
+          <div style="margin-top: 10px; padding: 10px 12px; background: var(--gray-50); border-radius: 6px;">
+            <div class="flex gap-2" style="align-items:center;">
+              <span style="font-size: 11px; color: var(--gray-500);">下一站</span>
+              <span style="font-size: 18px; font-weight: 700;" id="d-next-stop">中和楼</span>
+              <span class="tag" id="d-route-tag" style="margin-left:auto;">一线</span>
+            </div>
             <div class="text-sm text-2" style="margin-top: 4px;">
-              载客 <b id="d-onboard">0</b>/<b id="d-capacity">25</b> · 下站下车 <b id="d-off-next">0</b>人
-              <span id="d-route-tag" class="tag tag-accent" style="margin-left:6px;">一线</span>
+              当前位置 <span id="d-current-stop">沁园</span> · 载客 <b id="d-onboard">0</b>/<b id="d-capacity">25</b> · 下站下车 <b id="d-off-next">0</b>人
             </div>
           </div>
           <!-- 拥挤度三键 + 去向合并展示 -->
           <div class="grid-3" style="gap: 6px; margin-top: 10px;" id="d-crowd-group">
-            <button class="btn btn-outline btn-sm" data-crowd="empty">🟢 空载</button>
-            <button class="btn btn-sm" data-crowd="medium">🟡 适中</button>
-            <button class="btn btn-outline btn-sm" data-crowd="crowded">🔴 拥挤</button>
+            <button class="btn btn-outline btn-sm" data-crowd="empty">空载</button>
+            <button class="btn btn-sm" data-crowd="medium">适中</button>
+            <button class="btn btn-outline btn-sm" data-crowd="crowded">拥挤</button>
           </div>
           <div id="d-dest-summary" class="text-sm text-2" style="margin-top: 8px;">暂无乘客去向</div>
         </div>
@@ -68,12 +71,12 @@
         <div class="card">
           <div class="card-title">快捷操作</div>
           <div class="grid-2" style="gap: 8px;">
-            <button class="btn" id="btn-arrive" style="padding: 14px;">✓ 到站确认</button>
-            <button class="btn btn-outline" id="btn-temp-stop" style="padding: 14px;">⏸ 临时停靠</button>
-            <button class="btn btn-outline" id="btn-status" style="padding: 12px;">🔄 召回休息区</button>
-            <button class="btn btn-outline-danger" id="btn-exception" style="padding: 12px;">⚠ 异常上报</button>
+            <button class="btn" id="btn-arrive" style="padding: 14px;">到站确认</button>
+            <button class="btn btn-outline" id="btn-temp-stop" style="padding: 14px;">临时停靠</button>
+            <button class="btn btn-outline" id="btn-status" style="padding: 12px;">召回休息区</button>
+            <button class="btn btn-outline-danger" id="btn-exception" style="padding: 12px;">异常上报</button>
           </div>
-          <button class="btn btn-block btn-danger" id="btn-emergency" style="padding: 12px; margin-top: 8px;">📞 紧急联系调度</button>
+          <button class="btn btn-block btn-danger" id="btn-emergency" style="padding: 12px; margin-top: 8px;">紧急联系调度</button>
         </div>
       </div>
 
@@ -87,8 +90,8 @@
               <div class="text-sm text-2">模拟高峰压力 · 一键晚课放学</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:6px;">
-              <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">🔴 演示高峰</button>
-              <button class="btn btn-sm" id="btn-demo-rush" onclick="demoEveningRush()" style="background:#EA580C; border-color:#EA580C; color:#fff;">🌆 晚课放学</button>
+              <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">演示高峰</button>
+              <button class="btn btn-sm" id="btn-demo-rush" onclick="demoEveningRush()" style="background:#EA580C; border-color:#EA580C; color:#fff;">晚课放学</button>
             </div>
           </div>
         </div>

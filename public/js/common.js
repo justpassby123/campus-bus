@@ -1,5 +1,5 @@
 // ============================================================
-//  common.js - 公共工具 v4
+//  common.js - 公共工具 v5 (iOS 风格头像 + 状态工具)
 // ============================================================
 
 // 优先用用户自定义的 API 地址, 其次用 localhost:3000 (file:// 打开时),
@@ -81,6 +81,30 @@ window.App = {
   },
   statusClass(s) {
     return { standby: 'warning', operating: 'success', resting: 'accent', backup: 'gray' }[s] || 'gray';
+  },
+
+  // iOS 风格圆形头像：名字首字母 + 柔和渐变背景
+  // name: 显示文本，size: 像素尺寸
+  avatar(name, size = 42) {
+    const palettes = [
+      ['#FF9A9E', '#FECFEF'],
+      ['#A18CD1', '#FBC2EB'],
+      ['#84FAB0', '#8FD3F4'],
+      ['#FCCB90', '#D57EEB'],
+      ['#E0C3FC', '#8EC5FC'],
+      ['#43E97B', '#38F9D7'],
+      ['#FA709A', '#FEE140'],
+      ['#30CFD0', '#330867'],
+      ['#5EE7DF', '#B490CA'],
+      ['#F093FB', '#F5576C']
+    ];
+    const str = String(name || '');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i) | 0;
+    const [c1, c2] = palettes[Math.abs(hash) % palettes.length];
+    const letter = str.trim() && str.trim() !== '—' ? str.trim().charAt(0).toUpperCase() : '';
+    const content = letter || `<svg width="${size * 0.45}" height="${size * 0.45}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="5" fill="white" fill-opacity="0.95"/><path d="M3 21c0-5 4-8 9-8s9 3 9 8" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+    return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg,${c1},${c2});color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:${size * 0.45}px;flex-shrink:0;user-select:none;overflow:hidden;">${content}</div>`;
   }
 };
 

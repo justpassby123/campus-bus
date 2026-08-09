@@ -33,7 +33,7 @@
         <div class="card" style="position:relative; padding-left: 18px;">
           <div style="position:absolute; left:0; top:0; bottom:0; width:4px; background: var(--success); border-radius:8px 0 0 8px;" id="d-status-bar"></div>
           <div class="flex gap-3" style="align-items: center;">
-            <div style="width:42px; height:42px; border-radius:50%; background: #1F2937; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;" id="d-avatar">#01</div>
+            <div id="d-avatar" style="flex-shrink:0;"></div>
             <div class="flex-1">
               <div class="text-lg font-bold" id="d-bus-id">车辆 01</div>
               <div class="text-sm text-2" id="d-driver">司机：张建国</div>
@@ -46,7 +46,7 @@
               <span class="tag" id="d-route-tag" style="margin-left:auto;">一线</span>
             </div>
             <div class="text-sm text-2" style="margin-top: 4px;">
-              当前位置 <span id="d-current-stop">沁园</span> · 载客 <b id="d-onboard">0</b>/<b id="d-capacity">25</b> · 下站下车 <b id="d-off-next">0</b>人
+              当前位置 <span id="d-current-stop">沁园</span> · 载客 <b id="d-onboard">0</b>/<b id="d-capacity">25</b> · 下站下车 <b id="d-off-next">0</b>人 · 下一站等 <b id="d-next-wait">0</b>人
             </div>
           </div>
           <!-- 拥挤度三键 + 去向合并展示 -->
@@ -226,7 +226,7 @@
       <div id="tab-me" class="tab-pane hidden">
         <div class="card">
           <div class="flex gap-3" style="align-items: center;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--gray-100); display: flex; align-items: center; justify-content: center; font-size: 24px;">🧑‍✈️</div>
+            <div id="me-avatar" style="flex-shrink:0;"></div>
             <div class="flex-1">
               <div class="text-lg font-bold" id="me-driver">张建国</div>
               <div class="text-sm text-2" id="me-bus">绑定车辆: #01</div>
@@ -249,11 +249,11 @@
     </div>
 
     <nav class="tab-bar">
-      <button class="tab-item active" data-tab="drive"><span class="tab-icon">🚐</span><span>行车</span></button>
-      <button class="tab-item" data-tab="dispatch"><span class="tab-icon">🎛️</span><span>调度</span></button>
-      <button class="tab-item" data-tab="exception"><span class="tab-icon">⚠️</span><span>异常</span></button>
-      <button class="tab-item" data-tab="attendance"><span class="tab-icon">📅</span><span>考勤</span></button>
-      <button class="tab-item" data-tab="me"><span class="tab-icon">👤</span><span>我的</span></button>
+      <button class="tab-item active" data-tab="drive"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 7-7 7"/><path d="M5 9h14"/></svg></span><span>行车</span></button>
+      <button class="tab-item" data-tab="dispatch"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span>调度</span></button>
+      <button class="tab-item" data-tab="exception"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 22h20L12 2z"/><path d="M12 10v6"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></span><span>异常</span></button>
+      <button class="tab-item" data-tab="attendance"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 2v4M16 2v4"/></svg></span><span>考勤</span></button>
+      <button class="tab-item" data-tab="me"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></span><span>我的</span></button>
     </nav>
   </div>
 

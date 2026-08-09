@@ -133,7 +133,7 @@
       <!-- ========== TAB 4: 公告 ========== -->
       <div id="tab-notice" class="tab-pane hidden">
         <div class="card">
-          <div class="card-title">📢 公告</div>
+          <div class="card-title">公告</div>
           <div id="nt-list"></div>
         </div>
       </div>
@@ -142,7 +142,7 @@
       <div id="tab-me" class="tab-pane hidden">
         <div class="card">
           <div class="flex gap-3" style="align-items: center;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--gray-100); display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>
+            <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#A18CD1,#FBC2EB);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:22px;flex-shrink:0;">同</div>
             <div class="flex-1">
               <div class="text-lg font-bold">同学</div>
               <div class="text-sm text-2">南审校园公交 · 学生用户</div>
@@ -151,12 +151,12 @@
         </div>
 
         <div class="card">
-          <div class="card-title">📜 反馈记录</div>
+          <div class="card-title">反馈记录</div>
           <div id="me-fb-history" class="text-2 text-sm">暂无反馈</div>
         </div>
 
         <div class="card">
-          <div class="card-title">🚌 车队信息</div>
+          <div class="card-title">车队信息</div>
           <div id="me-fleet" class="text-2 text-sm">加载中...</div>
         </div>
 
@@ -166,7 +166,7 @@
         </div>
 
         <div class="card">
-          <div class="card-title">⚙️ 服务器设置</div>
+          <div class="card-title">服务器设置</div>
           <div class="text-sm text-2 mb-2">当前: <code id="s-api-status" style="font-size:11px;">检测中...</code></div>
           <button class="btn btn-outline btn-block btn-sm" onclick="showApiSettings()">修改服务器地址</button>
         </div>
@@ -175,11 +175,11 @@
     </div>
 
     <nav class="tab-bar">
-      <button class="tab-item active" data-tab="home"><span class="tab-icon">🏠</span><span>首页</span></button>
-      <button class="tab-item" data-tab="route"><span class="tab-icon">📋</span><span>线路</span></button>
-      <button class="tab-item" data-tab="service"><span class="tab-icon">🛠</span><span>服务</span></button>
-      <button class="tab-item" data-tab="notice"><span class="tab-icon">📢</span><span>公告</span></button>
-      <button class="tab-item" data-tab="me"><span class="tab-icon">👤</span><span>我的</span></button>
+      <button class="tab-item active" data-tab="home"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></span><span>首页</span></button>
+      <button class="tab-item" data-tab="route"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg></span><span>线路</span></button>
+      <button class="tab-item" data-tab="service"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span>服务</span></button>
+      <button class="tab-item" data-tab="notice"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 8c0-3.5-3.5-6-7-6S5 4.5 5 8c0 3 2 5 2 8h10c0-3 2-5 2-8z"/><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/></svg></span><span>公告</span></button>
+      <button class="tab-item" data-tab="me"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></span><span>我的</span></button>
     </nav>
   </div>
 

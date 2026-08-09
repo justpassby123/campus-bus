@@ -1,11 +1,13 @@
 // ============================================================
-//  student.js - 学生端逻辑 v5
-//  ① 上报先选一线/二线   ② 我的等待卡(我已上车/我不等了)
+//  student.js - 学生端逻辑 v6
+//  ① P0 双线智能选线: 学生只选 上车站+下车站, 后端推荐更快线路
+//  ② 我的等待卡(我已上车/我不等了)
 // ============================================================
 let stopsCache = [];
 let routesCache = [];
 let currentRouteId = 1;
 let currentTab = 'home';
+const CAP = 25; // 与后端 CAPACITY 保持一致 (核定载客量)
 let myReports = JSON.parse(localStorage.getItem('student-reports') || '[]');
 let myWaits = JSON.parse(localStorage.getItem('my-waits') || '[]');
 
@@ -279,7 +281,7 @@ function showHotStops() {
     return;
   }
   const hot = [3, 15, 9, 12, 2, 8];
-  el.innerHTML = '<div class="font-bold mb-2">🔥 热门站点</div>' + hot.map(id => {
+  el.innerHTML = '<div class="font-bold mb-2">热门站点</div>' + hot.map(id => {
     const s = stopsCache.find(x => x.id === id);
     return s ? stopRow(s) : '';
   }).join('');
@@ -288,7 +290,7 @@ function showHotStops() {
 function stopRow(s) {
   return `
     <div class="list-item" onclick="reportDemand(${s.id})" style="cursor: pointer;">
-      <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--gray-100); color: var(--text); display: flex; align-items: center; justify-content: center; font-size: 16px;">📍</div>
+      <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--gray-100); color: var(--text); display: flex; align-items: center; justify-content: center; font-size: 16px;">站</div>
       <div class="li-main">
         <div class="li-title">${s.name}</div>
         <div class="li-sub">点此上报等车</div>
@@ -297,42 +299,65 @@ function stopRow(s) {
     </div>`;
 }
 
-// ① 上报: 先选线路, 再选目的地 (v8 OD 模型)
+// ① P0: 上报 — 学生只选 上车站 + 下车站, 系统自动推荐更快线路 (v8 OD 模型)
 function reportDemand(stopId) {
   const s = stopsCache.find(x => x.id === stopId);
   if (!s) return;
+  const others = stopsCache.filter(x => x.id !== stopId);
+  const html = others.map(d =>
+    `<button class="btn btn-outline btn-block" style="margin:4px 0; text-align:left; padding:12px;" onclick="chooseDest(${stopId}, ${d.id})">${d.name}</button>`
+  ).join('');
   App.showModal(`
-    <div class="modal-title">🚏 ${s.name} · 选择乘坐线路</div>
-    <div class="grid-2" style="gap: 10px; margin-top: 6px;">
-      <button class="btn btn-lg" onclick="selectDest(${stopId}, 1)">一线</button>
-      <button class="btn btn-lg btn-outline" onclick="selectDest(${stopId}, 2)">二线</button>
-    </div>
+    <div class="modal-title">${s.name} · 你要去哪站？</div>
+    <div class="text-sm text-2 mb-2">选择目的地，系统自动对比一线 / 二线并推荐更快的线路</div>
+    <div style="max-height:52vh; overflow-y:auto;">${html}</div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
 
-function selectDest(stopId, routeId) {
-  const route = routesCache.find(r => r.id === routeId);
-  if (!route) return;
-  const stopIdx = route.stopIds.indexOf(stopId);
-  const destOptions = [];
-  for (let i = stopIdx + 1; i < route.stopIds.length - 1; i++) {
-    const sid = route.stopIds[i];
-    const stop = stopsCache.find(s => s.id === sid);
-    if (stop) destOptions.push(stop);
+// 选完目的地 → 调后端推荐
+async function chooseDest(fromId, toId) {
+  App.closeModal();
+  App.toast('正在对比线路...', 600);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}/api/route/suggest?from=${fromId}&to=${toId}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await res.json();
+    if (!data.lines) { App.toast('推荐失败: ' + (data.error || '')); return; }
+    showRouteSuggest(fromId, toId, data);
+  } catch (e) {
+    if (e.name === 'AbortError') App.toast('请求超时(5s)，后端未响应', 3000);
+    else App.toast('网络错误 → 打开"我的"→"修改服务器地址"', 3500);
   }
-  if (destOptions.length === 0) {
-    doReport(stopId, routeId, null);
-    return;
+}
+
+// 展示两线对比卡片 + 推荐高亮
+function showRouteSuggest(fromId, toId, data) {
+  const fromName = stopsCache.find(s => s.id === fromId).name;
+  const toName = stopsCache.find(s => s.id === toId).name;
+  const reachables = data.lines.filter(l => l.reachable);
+  let cards;
+  if (reachables.length === 0) {
+    cards = '<div class="text-2" style="padding:8px 0;">该目的地暂不可直达，请就近换乘或选择其他站点。</div>';
+  } else {
+    cards = reachables.map(l => {
+      const rec = l.routeId === data.recommend;
+      const fullTag = l.full ? `<span class="tag tag-danger">满载 ${l.onboard}/${CAP}</span>` : '';
+      return `
+        <button class="btn btn-block" style="margin:6px 0; text-align:left; padding:14px; ${rec ? 'border:2px solid var(--accent); background:var(--accent-light);' : 'border:1px solid var(--gray-200);'}" onclick="doReport(${fromId}, ${l.routeId}, ${toId})">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <b>${l.routeName}</b>
+            ${rec ? '<span class="tag tag-accent">推荐</span>' : ''}
+          </div>
+          <div class="text-sm text-2" style="margin-top:2px;">途经 ${l.stopCount} 站 · 最近 ${l.nearestBusId || '无车'} 约 ${l.eta} 分 ${fullTag}</div>
+        </button>`;
+    }).join('');
   }
-  const destHtml = destOptions.map(d =>
-    `<button class="btn btn-outline btn-block" style="margin: 4px 0; text-align: left; padding: 12px;" onclick="doReport(${stopId}, ${routeId}, ${d.id})">📍 ${d.name}</button>`
-  ).join('');
-  const stopName = stopsCache.find(s => s.id === stopId).name;
-  const routeName = routeId === 1 ? '一线' : '二线';
   App.showModal(`
-    <div class="modal-title">🚏 ${stopName} · ${routeName} → 要去哪站？</div>
-    <div class="text-sm text-2 mb-2">选择下车站 (系统将按目的地调度空位)</div>
-    ${destHtml}
+    <div class="modal-title">${fromName} → ${toName}</div>
+    <div class="text-sm text-2 mb-2">已自动对比一线 / 二线，推荐更快的线路</div>
+    ${cards}
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
 

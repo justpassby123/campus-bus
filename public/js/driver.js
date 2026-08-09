@@ -117,7 +117,7 @@ function renderAll() {
   const busNum = cur.id.replace('#','');
   document.getElementById('d-bus-id').textContent = '车辆 ' + busNum;
   const avatar = document.getElementById('d-avatar');
-  if (avatar) avatar.textContent = '#' + busNum;
+  if (avatar) avatar.innerHTML = App.avatar(cur.driver, 42);
   document.getElementById('d-driver').textContent = '司机：' + cur.driver + (cur.shift ? ' · ' + cur.shift : '');
   const routeTag = document.getElementById('d-route-tag');
   if (routeTag) { routeTag.textContent = route.name; routeTag.className = 'tag tag-' + (cur.routeId === 2 ? 'warning' : 'accent'); }
@@ -145,10 +145,16 @@ function renderAll() {
     }
   });
 
-  // 载客量
+  // 载客量 + 下一站等待人数
   document.getElementById('d-onboard').textContent = cur.onboard || 0;
   document.getElementById('d-capacity').textContent = s.capacity || 25;
   document.getElementById('d-off-next').textContent = cur.offNext || 0;
+  let nextWait = 0;
+  if (cur.nextStopId) {
+    const ns = s.stops.find(x => x.id === cur.nextStopId);
+    if (ns) nextWait = cur.routeId === 1 ? ns.wait1 : ns.wait2;
+  }
+  document.getElementById('d-next-wait').textContent = nextWait;
 
   // v8: 车上乘客去向
   const destEl = document.getElementById('d-dest-summary');
@@ -172,14 +178,18 @@ function renderAll() {
   btnArrive.disabled = !isOperating;
   btnTempStop.disabled = !isOperating;
   if (isParked) {
-    btnStatus.textContent = '🅿️ 已在休息区';
+    btnStatus.textContent = '已在休息区';
     btnStatus.disabled = true;
   } else {
-    btnStatus.textContent = '🔄 召回休息区';
+    btnStatus.textContent = '召回休息区';
     btnStatus.disabled = false;
   }
 
   document.getElementById('d-period').textContent = App.periodText(s.timePeriod) + '时段';
+
+  // 我的页面头像
+  const meAvatar = document.getElementById('me-avatar');
+  if (meAvatar) meAvatar.innerHTML = App.avatar(cur.driver, 48);
 
   if (currentTab === 'dispatch') renderDispatch();
 }
@@ -187,12 +197,12 @@ function renderAll() {
 function renderFleetGrid(buses) {
   const el = document.getElementById('d-fleet-grid');
   el.innerHTML = buses.map(b => {
-    let bg, color;
-    if (b.status === 'operating') { bg = '#1F2937'; color = '#fff'; }
-    else if (b.status === 'standby') { bg = '#F3F4F6'; color = '#6B7280'; }
-    else { bg = '#fff'; color = '#9CA3AF'; }
     const sel = b.id === currentBusId ? 'outline: 2px solid #2563EB; outline-offset: 1px;' : '';
-    return `<div onclick="selectBus('${b.id}')" style="text-align:center; padding:8px 4px; border-radius:6px; font-size:12px; font-weight:600; background: ${bg}; color: ${color}; ${b.status === 'resting' ? 'border: 1px dashed #6B7280;' : ''} ${sel}">${b.id.replace('#','')}<div style="font-size:10px; font-weight:400; opacity:0.85;">${App.statusText(b.status)}</div></div>`;
+    return `<div onclick="selectBus('${b.id}')" style="text-align:center; padding:8px 4px; border-radius:6px; ${b.status === 'resting' ? 'border: 1px dashed #6B7280;' : ''} ${sel}">
+      <div style="display:flex; justify-content:center; margin-bottom:4px;">${App.avatar(b.driver, 30)}</div>
+      <div style="font-size:12px; font-weight:600; color:#111827;">${b.id.replace('#','')}</div>
+      <div style="font-size:10px; font-weight:400; color:#6B7280;">${App.statusText(b.status)}</div>
+    </div>`;
   }).join('');
 }
 
@@ -265,7 +275,7 @@ function renderDispatch() {
   }
   const btnPeak = document.getElementById('btn-peak');
   if (btnPeak) {
-    btnPeak.textContent = peak.active ? '🟢 高峰中·点击退出' : '🔴 开启演示高峰';
+    btnPeak.textContent = peak.active ? '高峰中 · 点击退出' : '开启演示高峰';
     btnPeak.className = peak.active ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-danger';
   }
   const pb = document.getElementById('dp-peak-banner');
@@ -287,7 +297,7 @@ function renderDispatch() {
       const hi = i === 0;
       const pc = d.priority === 'high' ? '#DC2626' : d.priority === 'medium' ? '#D97706' : '#9CA3AF';
       const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
-        ? `<button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="quickDispatch('${d.nearbyBusId}', ${d.routeId})">⚡ 一键增发</button>`
+        ? `<button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="quickDispatch('${d.nearbyBusId}', ${d.routeId})">一键增发</button>`
         : '';
       // v8: 目的地标签
       const destTags = (d.destList || []).map(dst =>
@@ -314,7 +324,7 @@ function renderDispatch() {
     ? '<div class="text-2 text-center" style="padding: 12px;">无可用车辆</div>'
     : avail.map(b => `
       <div class="list-item">
-        <div style="width:34px;height:34px;border-radius:50%;background:#F3F4F6;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;">${b.id.replace('#','')}</div>
+        ${App.avatar(b.driver, 34)}
         <div class="li-main">
           <div class="li-title">${b.id} <span class="tag">${App.statusText(b.status)}</span></div>
           <div class="li-sub">司机 ${b.driver} · 停沁园休息区</div>
@@ -333,7 +343,7 @@ function renderDispatch() {
     const offTag = b.offNext > 0 ? ` · 下站下${b.offNext}人` : '';
     return `
       <div class="list-item">
-        <div style="width:34px;height:34px;border-radius:50%;background:#1F2937;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;">${b.id.replace('#','')}</div>
+        ${App.avatar(b.driver, 34)}
         <div class="li-main">
           <div class="li-title">${b.id} · ${rn} · ${App.crowdText(b.crowd)}</div>
           <div class="li-sub">${b.currentStopName} → ${b.nextStopName} · 载客 ${b.onboard}/${s.capacity || 25}${offTag}</div>
@@ -350,12 +360,12 @@ function renderDispatch() {
     const overflow = stats.overflow || 0;
     let html = '';
     if (overflow > 0) {
-      html += `<div class="font-bold text-sm mb-2" style="color:#D97706;">⚠️ 累计满载溢出 ${overflow} 人次 (未能首班接走的乘客)</div>`;
+      html += `<div class="font-bold text-sm mb-2" style="color:#D97706;">累计满载溢出 ${overflow} 人次 (未能首班接走的乘客)</div>`;
     }
     if (odTop.length === 0) {
       html += '<div class="text-2 text-center" style="padding:8px;">暂无OD数据</div>';
     } else {
-      html += '<div class="font-bold text-sm mb-2">🔥 热门出行 OD Top8</div>';
+      html += '<div class="font-bold text-sm mb-2">热门出行 OD Top8</div>';
       html += odTop.map((od, i) => {
         const max = odTop[0].count;
         const pct = Math.round(od.count / max * 100);
@@ -381,7 +391,7 @@ function dispatchBus(id, routeId) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ busId: id, routeId })
   }).then(r => r.json()).then(d => {
-    App.toast(d.success ? `✓ ${id} 已派往${d.routeName}` : '派车失败: ' + (d.error || ''));
+    App.toast(d.success ? `${id} 已派往${d.routeName}` : '派车失败: ' + (d.error || ''));
   });
 }
 
@@ -391,7 +401,7 @@ function quickDispatch(id, routeId) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ busId: id, routeId })
   }).then(r => r.json()).then(d => {
-    App.toast(d.success ? `⚡ ${id} 已增发 ${d.routeName}` : '增发失败: ' + (d.error || ''));
+    App.toast(d.success ? `${id} 已增发 ${d.routeName}` : '增发失败: ' + (d.error || ''));
   });
 }
 

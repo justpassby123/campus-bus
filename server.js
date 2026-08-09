@@ -331,6 +331,21 @@ function seedDemoData() {
   });
   // v8: 预置溢出样本 (竹苑/中和楼/竞秀楼高峰满载)
   state.overflowStats = { '11_1': 4, '2_1': 3, '15_2': 2 };
+
+  // 预置车队载客情形多样化 (演示多种情形):
+  //   #04(二线) 接近满载(24/25) → 演示"满载预警" + 拥挤态
+  //   #01(一线) 适中(13/25)     → 演示"适中"态
+  //   #02/#05 保持空载           → 演示"空载"态
+  if (busById['#04']) {
+    busById['#04'].onboard = 25;                       // 满载 (25/25) → 演示"满载预警"
+    busById['#04'].passengers = { 9: 25 };            // 目的地: 泽园餐厅
+    busById['#04'].crowd = autoCrowd(25);
+  }
+  if (busById['#01']) {
+    busById['#01'].onboard = 13;
+    busById['#01'].passengers = { 12: 13 };           // 目的地: 润园
+    busById['#01'].crowd = autoCrowd(13);
+  }
 }
 
 // 可增发的待命/备班车 (优先同线路)
@@ -532,7 +547,7 @@ function getFullState() {
       return {
         id: b.id, driver: b.driver, routeId: b.routeId, status: b.status, shift: b.shift,
         lat: b.lat, lng: b.lng, crowd: b.crowd, speed: b.speed,
-        currentStopName: b.currentStopName, nextStopName: b.nextStopName,
+        currentStopName: b.currentStopName, nextStopName: b.nextStopName, nextStopId,
         autoMove: b.autoMove, totalServed: b.totalServed, totalTrips: b.totalTrips,
         onboard: b.onboard, offNext, destSummary, lapsCompleted: b.lapsCompleted
       };
@@ -699,6 +714,55 @@ app.post('/api/demand', (req, res) => {
     destStopName: stopById[finalDest] ? stopById[finalDest].name : '?',
     waitCount: d.count, eta, busId, full
   });
+});
+
+// ①-b P0: 双线智能选线推荐
+//   学生只选 上车站 + 下车站, 后端自动对比一线/二线:
+//   ① 是否可达 (环线正向可到) ② 途经站数 ③ 最近班车 ETA ④ 是否满载
+//   返回 recommend = 可达且 ETA 最小的线路
+app.get('/api/route/suggest', (req, res) => {
+  const from = parseInt(req.query.from);
+  const to = parseInt(req.query.to);
+  if (!from || !to || !stopById[from] || !stopById[to]) return res.status(400).json({ error: '无效站点' });
+  if (from === to) return res.status(400).json({ error: '上车站与下车站不能相同' });
+
+  // 环线: 从 from 正向(可绕圈)走到 to 的途经站数
+  function loopStopCount(route, fromId, toId) {
+    const ids = route.stopIds;
+    const start = ids.indexOf(fromId);
+    if (start === -1) return null;
+    for (let i = 1; i <= ids.length; i++) {
+      if (ids[(start + i) % ids.length] === toId) return i; // 含下车站, 不含上车站
+    }
+    return null;
+  }
+
+  const lines = [1, 2].map(routeId => {
+    const route = routeById[routeId];
+    const stopCount = loopStopCount(route, from, to);
+    const reachable = stopCount !== null;
+    let eta = 0, nearestBusId = null, full = false, onboard = 0;
+    if (reachable) {
+      // 直接用"最近运营车"计算 ETA (不依赖 calculateSchedule, 后者只覆盖已有需求的站点)
+      const nb = nearestBusToStop(stopById[from], routeId);
+      const distance = nb ? nb.dist : 1;
+      eta = nb ? Math.max(1, Math.round(distance / 20 * 60)) : 0;
+      nearestBusId = nb ? nb.bus.id : null;
+      const bus = nearestBusId ? busById[nearestBusId] : null;
+      full = !!(bus && bus.onboard >= CAPACITY);
+      onboard = bus ? bus.onboard : 0;
+    }
+    return { routeId, routeName: route.name, reachable, stopCount: stopCount || 0, eta, nearestBusId, full, onboard };
+  });
+
+  // 推荐: 可达线路中 ETA 最小者; ETA 相同则取途经站数少者
+  let recommend = null;
+  const reachables = lines.filter(l => l.reachable);
+  if (reachables.length) {
+    reachables.sort((a, b) => (a.eta - b.eta) || (a.stopCount - b.stopCount));
+    recommend = reachables[0].routeId;
+  }
+  res.json({ from, to, lines, recommend });
 });
 
 // ② 学生核销: 我已上车 / 我不等了 (该线人数 -1)

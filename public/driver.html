@@ -80,9 +80,10 @@
         </div>
       </div>
 
-      <!-- ========== TAB 2: 调度 (含行程站点+调度管理) ========== -->
+      <!-- ========== TAB 2: 调度 (精简合并版) ========== -->
       <div id="tab-dispatch" class="tab-pane hidden">
-        <!-- 演示控制 -->
+
+        <!-- 演示控制 (合并高峰横幅) -->
         <div class="card">
           <div class="flex gap-2" style="align-items: center;">
             <div class="flex-1">
@@ -90,63 +91,35 @@
               <div class="text-sm text-2">模拟高峰压力 · 一键晚课放学</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:6px;">
-              <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">演示高峰</button>
+              <button class="btn btn-sm btn-outline-danger" id="btn-peak" onclick="togglePeak()">开启演示高峰</button>
               <button class="btn btn-sm" id="btn-demo-rush" onclick="demoEveningRush()" style="background:#EA580C; border-color:#EA580C; color:#fff;">晚课放学</button>
             </div>
           </div>
-        </div>
-
-        <!-- 高峰热备横幅 -->
-        <div id="dp-peak-banner" class="card hidden" style="background: #FEF3C7; border-color: #FCD34D;">
-          <div class="flex gap-2" style="align-items: center;">
-            <span style="font-size: 20px;">🔴</span>
-            <div class="flex-1">
-              <div class="font-bold">高峰模式 · 待命车辆已热备</div>
-              <div class="text-sm text-2" id="dp-peak-text">压力站可一键增发</div>
-            </div>
+          <!-- 高峰状态行 (替代独立横幅卡) -->
+          <div id="dp-peak-banner" class="hidden" style="margin-top:10px; padding:8px 10px; background:#FEF3C7; border:1px solid #FCD34D; border-radius:6px; display:flex; gap:6px; align-items:center;">
+            <span style="font-size:16px;">🔴</span>
+            <span class="text-sm" id="dp-peak-text">高峰模式 · 待命车辆已热备</span>
           </div>
         </div>
 
-        <!-- 车队总览 (从行车移来) -->
+        <!-- 车队调度 (合并 车队总览 + 车辆调度) -->
         <div class="card">
           <div class="card-title">
-            <span>车队总览</span>
+            <span>车队调度</span>
             <span class="more" id="d-fleet-sub">加载中...</span>
           </div>
-          <div class="grid-3" style="gap: 6px;" id="d-fleet-grid"></div>
+          <div id="dp-fleet-list"></div>
+          <div class="text-sm text-2" style="margin-top:8px; font-weight:600;">当前查看：<span id="dp-selected" class="font-bold">#01</span> · 点车辆可切换</div>
         </div>
 
-        <!-- 环线站点·实时候车 (合并行程) -->
+        <!-- 环线站点 · 候车压力 (合并 环线站点 + 候车压力榜) -->
         <div class="card">
           <div class="card-title">
-            <span>环线站点 · 实时候车</span>
-            <span class="more" id="dp-route-hint">点击站点可查看详情</span>
+            <span>环线站点 · 候车压力</span>
+            <span class="more" id="dp-route-hint">系统智能建议增发</span>
           </div>
-          <div id="dp-stops-list"></div>
-        </div>
-
-        <!-- 候车压力榜 -->
-        <div class="card">
-          <div class="card-title">
-            <span>候车压力榜</span>
-            <span class="more" id="dp-headway">运营 0 辆 · 待命 0 辆</span>
-          </div>
-          <div id="dp-suggest">
-            <div class="text-2 text-center" style="padding: 12px;">加载中...</div>
-          </div>
-        </div>
-
-        <!-- 可派车辆 + 运营中车辆 (合并为一张卡) -->
-        <div class="card">
-          <div class="card-title">车辆调度</div>
-          <div class="text-sm text-2 mb-2" style="font-weight:600;">待命车辆（沁园休息区）</div>
-          <div id="dp-available">
-            <div class="text-2 text-center" style="padding: 8px;">加载中...</div>
-          </div>
-          <div class="text-sm text-2 mb-2" style="font-weight:600; margin-top: 10px;">运营中车辆（可召回）</div>
-          <div id="dp-operating">
-            <div class="text-2 text-center" style="padding: 8px;">加载中...</div>
-          </div>
+          <div id="dp-suggest"></div>
+          <div id="dp-stops-list" style="margin-top:10px;"></div>
         </div>
 
       </div>

@@ -95,7 +95,7 @@ function renderAll() {
 
   const f = s.fleet || { total: 9, backup: 1, operating: 0, resting: 0 };
   document.getElementById('d-fleet-sub').textContent = `共 ${f.total} · 运营 ${f.operating} · 待命 ${f.resting || 0}`;
-  renderFleetGrid(s.buses);
+  renderFleetDispatch();
 
   // 休息区面板
   const restPanel = document.getElementById('d-rest-panel');
@@ -190,16 +190,43 @@ function renderAll() {
   if (currentTab === 'dispatch') renderDispatch();
 }
 
-function renderFleetGrid(buses) {
-  const el = document.getElementById('d-fleet-grid');
-  el.innerHTML = buses.map(b => {
-    const sel = b.id === currentBusId ? 'outline: 2px solid #2563EB; outline-offset: 1px;' : '';
-    return `<div onclick="selectBus('${b.id}')" style="text-align:center; padding:8px 4px; border-radius:6px; ${b.status === 'resting' ? 'border: 1px dashed #6B7280;' : ''} ${sel}">
-      <div style="display:flex; justify-content:center; margin-bottom:4px;">${App.emojiAvatar('🚌', 30)}</div>
-      <div style="font-size:12px; font-weight:600; color:#111827;">${b.id.replace('#','')}</div>
-      <div style="font-size:10px; font-weight:400; color:#6B7280;">${App.statusText(b.status)}</div>
-    </div>`;
+// 车队调度 (合并 车队总览 + 车辆调度)：统一列表，每车含派车/召回操作
+function renderFleetDispatch() {
+  const s = App.state;
+  if (!s) return;
+  const el = document.getElementById('dp-fleet-list');
+  if (!el) return;
+  const cap = s.capacity || 25;
+  el.innerHTML = s.buses.map(b => {
+    const rn = (routesCache.find(r => r.id === b.routeId) || {}).name || '—';
+    const sel = b.id === currentBusId;
+    const isOp = b.status === 'operating';
+    const border = sel ? 'border:1.5px solid #2563EB; background:#EFF6FF;' : 'border:1px solid var(--border);';
+    const action = ['standby', 'backup', 'resting'].includes(b.status)
+      ? `<div class="grid-2" style="gap:5px; width:110px;">
+           <button class="btn btn-sm" style="padding-left:4px;padding-right:4px;" onclick="event.stopPropagation(); dispatchBus('${b.id}',1)">一线</button>
+           <button class="btn btn-sm btn-outline" style="padding-left:4px;padding-right:4px;" onclick="event.stopPropagation(); dispatchBus('${b.id}',2)">二线</button>
+         </div>`
+      : `<button class="btn btn-sm btn-outline-danger" style="width:58px; padding-left:4px; padding-right:4px;" onclick="event.stopPropagation(); recallBus('${b.id}')">召回</button>`;
+    const crowdTag = isOp
+      ? `<span class="tag tag-${b.crowd === 'crowded' ? 'danger' : b.crowd === 'empty' ? 'success' : ''}">${App.crowdText(b.crowd)}</span>`
+      : '';
+    const offTag = isOp && b.offNext > 0 ? ` · 下站下${b.offNext}人` : '';
+    const sub = isOp
+      ? `${rn} · ${b.currentStopName}→${b.nextStopName} · 载客 ${b.onboard}/${cap}${offTag}`
+      : `司机 ${b.driver} · 停沁园休息区`;
+    return `
+      <div class="list-item" style="border-radius:6px; padding:8px 6px; ${border}" onclick="selectBus('${b.id}')">
+        ${App.emojiAvatar('🚌', 34)}
+        <div class="li-main">
+          <div class="li-title">${b.id} <span class="tag">${App.statusText(b.status)}</span> ${crowdTag}</div>
+          <div class="li-sub">${sub}</div>
+        </div>
+        ${action}
+      </div>`;
   }).join('');
+  const selEl = document.getElementById('dp-selected');
+  if (selEl) selEl.textContent = currentBusId;
 }
 
 function selectBus(id) {
@@ -258,17 +285,19 @@ function renderDispatch() {
   if (!s) return;
   const sched = s.schedule || [];
 
+  // 车队调度列表 (合并 车队总览 + 车辆调度)
+  renderFleetDispatch();
+
   // 环线站点·实时候车 (合并自行程页)
   renderDispatchStops();
 
-  // 高峰状态 + 车队计数
+  // 智能建议 标题提示：总候车人数
+  const totalWait = sched.reduce((sum, d) => sum + (d.waitCount || 0), 0);
+  const hintEl = document.getElementById('dp-route-hint');
+  if (hintEl) hintEl.textContent = `共 ${totalWait} 人候车 · 智能建议增发`;
+
+  // 高峰状态 (内联状态行，替代独立横幅卡)
   const peak = s.peak || { active: false, manual: false, label: '' };
-  const hw = document.getElementById('dp-headway');
-  if (hw && s.fleet) {
-    const avg = s.stats && s.stats.samples ? ` · 累计均候 ${s.stats.avgWait} 分(${s.stats.samples}次)` : '';
-    const ovf = s.stats && s.stats.overflow ? ` · 溢出 ${s.stats.overflow}人` : '';
-    hw.textContent = `运营 ${s.fleet.operating} 辆 · 待命 ${s.fleet.resting || 0} 辆${avg}${ovf}`;
-  }
   const btnPeak = document.getElementById('btn-peak');
   if (btnPeak) {
     btnPeak.textContent = peak.active ? '高峰中 · 点击退出' : '开启演示高峰';
@@ -284,12 +313,13 @@ function renderDispatch() {
     } else pb.classList.add('hidden');
   }
 
-  // 智能建议 / 需求榜
+  // 智能建议 / 需求榜 (Top 4 优先增发)
   const sug = document.getElementById('dp-suggest');
+  if (!sug) return;
   if (sched.length === 0) {
     sug.innerHTML = '<div class="text-2 text-center" style="padding: 12px;">当前候车压力小，暂无需增发</div>';
   } else {
-    sug.innerHTML = sched.slice(0, 6).map((d, i) => {
+    sug.innerHTML = sched.slice(0, 4).map((d, i) => {
       const hi = i === 0;
       const pc = d.priority === 'high' ? '#E2566B' : d.priority === 'medium' ? '#D97706' : '#9CA3AF';
       const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
@@ -312,41 +342,6 @@ function renderDispatch() {
         </div>`;
     }).join('');
   }
-
-  // 可用车辆 (待命/备班)
-  const avail = s.buses.filter(b => ['standby', 'backup', 'resting'].includes(b.status));
-  const av = document.getElementById('dp-available');
-  av.innerHTML = avail.length === 0
-    ? '<div class="text-2 text-center" style="padding: 12px;">无可用车辆</div>'
-    : avail.map(b => `
-      <div class="list-item">
-        ${App.emojiAvatar('🚌', 34)}
-        <div class="li-main">
-          <div class="li-title">${b.id} <span class="tag">${App.statusText(b.status)}</span></div>
-          <div class="li-sub">司机 ${b.driver} · 停沁园休息区</div>
-        </div>
-        <div class="grid-2" style="gap:6px; width:130px;">
-          <button class="btn btn-sm" onclick="dispatchBus('${b.id}', 1)">派一线</button>
-          <button class="btn btn-sm btn-outline" onclick="dispatchBus('${b.id}', 2)">派二线</button>
-        </div>
-      </div>`).join('');
-
-  // 运营中车辆
-  const ops = s.buses.filter(b => b.status === 'operating');
-  const opEl = document.getElementById('dp-operating');
-  opEl.innerHTML = ops.map(b => {
-    const rn = (routesCache.find(r => r.id === b.routeId) || {}).name || '';
-    const offTag = b.offNext > 0 ? ` · 下站下${b.offNext}人` : '';
-    return `
-      <div class="list-item">
-        ${App.emojiAvatar('🚌', 34)}
-        <div class="li-main">
-          <div class="li-title">${b.id} · ${rn} · ${App.crowdText(b.crowd)}</div>
-          <div class="li-sub">${b.currentStopName} → ${b.nextStopName} · 载客 ${b.onboard}/${s.capacity || 25}${offTag}</div>
-        </div>
-        <button class="btn btn-sm btn-outline" onclick="recallBus('${b.id}')">召回</button>
-      </div>`;
-  }).join('');
 }
 
 function dispatchBus(id, routeId) {

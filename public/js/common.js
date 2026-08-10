@@ -175,8 +175,8 @@ window.MapView = {
       const wait = s.waitCount || 0;
       const isHot = wait >= 3;
       const isWarm = wait > 0 && wait < 3;
-      const ring = isHot ? '#DC2626' : isWarm ? '#F59E0B' : '#2563EB';
-      const fill = isHot ? '#DC2626' : isWarm ? '#F59E0B' : '#fff';
+      const ring = isHot ? '#E2566B' : isWarm ? '#F59E0B' : '#2563EB';
+      const fill = isHot ? '#E2566B' : isWarm ? '#F59E0B' : '#fff';
       const stroke = '#fff';
       const r = isHot ? 9 : 7;
       svg += `<g>
@@ -226,7 +226,7 @@ window.MapView = {
     // ⑦ 指北针 (简化版)
     svg += `<g transform="translate(${W-26}, 22)">
       <circle r="11" fill="#fff" stroke="#CBD5E1" stroke-width="1" opacity="0.95"/>
-      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#DC2626"/>
+      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#E2566B"/>
       <text x="0" y="-12" text-anchor="middle" font-size="8" fill="#6B7280" font-weight="600">N</text>
     </g>`;
 

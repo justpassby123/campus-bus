@@ -34,7 +34,7 @@ function updateApiStatus(ok) {
   if (!el) return;
   const base = API_BASE || location.origin;
   el.textContent = ok ? `已连接 ${base}` : `未连接 ${base}`;
-  el.style.color = ok ? '#16A34A' : '#DC2626';
+  el.style.color = ok ? '#16A34A' : '#E2566B';
 }
 
 async function init() {
@@ -291,7 +291,7 @@ function renderDispatch() {
   } else {
     sug.innerHTML = sched.slice(0, 6).map((d, i) => {
       const hi = i === 0;
-      const pc = d.priority === 'high' ? '#DC2626' : d.priority === 'medium' ? '#D97706' : '#9CA3AF';
+      const pc = d.priority === 'high' ? '#E2566B' : d.priority === 'medium' ? '#D97706' : '#9CA3AF';
       const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
         ? `<button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="quickDispatch('${d.nearbyBusId}', ${d.routeId})">一键增发</button>`
         : '';
@@ -347,39 +347,6 @@ function renderDispatch() {
         <button class="btn btn-sm btn-outline" onclick="recallBus('${b.id}')">召回</button>
       </div>`;
   }).join('');
-
-  // v8: OD 热力 & 溢出统计
-  const odEl = document.getElementById('dp-od-stats');
-  if (odEl) {
-    const stats = s.stats || {};
-    const odTop = stats.odTop || [];
-    const overflow = stats.overflow || 0;
-    let html = '';
-    if (overflow > 0) {
-      html += `<div class="font-bold text-sm mb-2" style="color:#D97706;">累计满载溢出 ${overflow} 人次 (未能首班接走的乘客)</div>`;
-    }
-    if (odTop.length === 0) {
-      html += '<div class="text-2 text-center" style="padding:8px;">暂无OD数据</div>';
-    } else {
-      html += '<div class="font-bold text-sm mb-2">热门出行 OD Top8</div>';
-      html += odTop.map((od, i) => {
-        const max = odTop[0].count;
-        const pct = Math.round(od.count / max * 100);
-        return `
-          <div style="margin-bottom:6px;">
-            <div class="flex gap-2" style="align-items:center; font-size:13px;">
-              <span style="width:18px; color:#9CA3AF;">${i+1}</span>
-              <span><b>${od.fromName}</b> → <b>${od.toName}</b></span>
-              <span class="tag tag-danger" style="margin-left:auto;">${od.count}人次</span>
-            </div>
-            <div style="height:4px; background:#F3F4F6; border-radius:2px; margin-top:2px;">
-              <div style="height:4px; width:${pct}%; background:#2563EB; border-radius:2px;"></div>
-            </div>
-          </div>`;
-      }).join('');
-    }
-    odEl.innerHTML = html;
-  }
 }
 
 function dispatchBus(id, routeId) {
@@ -470,7 +437,7 @@ function renderDispatchStops() {
           <div class="li-title">${bldg.icon} ${stop.name}${isLoopEnd ? ' <span class="tag">回起点</span>' : ''}${isCurrent ? ' <span class="tag tag-accent">当前位置</span>' : ''}</div>
           <div class="li-sub">
             ${bldg.label}
-            ${wait1 > 0 ? ` · <span style="color:#DC2626;">一线 ${wait1}人${eta1 ? '(' + eta1 + '分)' : ''}</span>` : ''}
+            ${wait1 > 0 ? ` · <span style="color:#E2566B;">一线 ${wait1}人${eta1 ? '(' + eta1 + '分)' : ''}</span>` : ''}
             ${wait2 > 0 ? ` · <span style="color:#EA580C;">二线 ${wait2}人${eta2 ? '(' + eta2 + '分)' : ''}</span>` : ''}
             ${!hasWait && !isLoopEnd ? ' · 无候车' : ''}
           </div>

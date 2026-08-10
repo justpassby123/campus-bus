@@ -40,7 +40,7 @@ function updateApiStatus(ok) {
   if (!el) return;
   const base = API_BASE || location.origin;
   el.textContent = ok ? `已连接 ${base}` : `未连接 ${base}`;
-  el.style.color = ok ? '#16A34A' : '#DC2626';
+  el.style.color = ok ? '#16A34A' : '#E2566B';
 }
 
 async function init() {
@@ -408,7 +408,7 @@ function renderRouteDetail() {
     const waitCount = d ? (currentRouteId === 1 ? d.wait1 : d.wait2) : 0;
     return `
       <div class="list-item" onclick="reportDemand(${id})" style="cursor: pointer;">
-        <div style="width: 30px; height: 30px; border-radius: 50%; background: ${waitCount > 0 ? '#DC2626' : '#F3F4F6'}; color: ${waitCount > 0 ? '#fff' : '#6B7280'}; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">${idx + 1}</div>
+        <div style="width: 30px; height: 30px; border-radius: 50%; background: ${waitCount > 0 ? '#E2566B' : '#F3F4F6'}; color: ${waitCount > 0 ? '#fff' : '#6B7280'}; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">${idx + 1}</div>
         <div class="li-main">
           <div class="li-title">${stop.name}${waitCount > 0 ? ` <span class="tag tag-danger">${waitCount}人</span>` : ''}</div>
           <div class="li-sub">${idx === route.stopIds.length - 1 ? '返回中和楼 (闭环)' : '点击选择目的地并上报' + route.name + '等车'}</div>

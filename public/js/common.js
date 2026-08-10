@@ -73,6 +73,22 @@ window.App = {
     if (m) m.remove();
   },
 
+  showSheet(html) {
+    const old = document.getElementById('app-sheet');
+    if (old) old.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'app-sheet';
+    wrap.className = 'sheet-backdrop';
+    wrap.innerHTML = `<div class="sheet-panel" onclick="event.stopPropagation()">${html}</div>`;
+    wrap.onclick = () => wrap.remove();
+    document.body.appendChild(wrap);
+    return wrap;
+  },
+  closeSheet() {
+    const m = document.getElementById('app-sheet');
+    if (m) m.remove();
+  },
+
   periodText(p) { return { peak: '高峰', normal: '平峰', off: '非运营' }[p] || p; },
   crowdText(c) { return { empty: '空载', medium: '适中', crowded: '拥挤' }[c] || c; },
   crowdClass(c) { return { empty: 'success', medium: 'warning', crowded: 'danger' }[c] || 'gray'; },
@@ -143,7 +159,7 @@ window.MapView = {
       (1 - (lat - (minLat - pad)) / rangeLat) * H
     ];
 
-    const ROUTE_COLORS = { 1: '#2563EB', 2: '#EA580C' };
+    const ROUTE_COLORS = { 1: '#3A63D8', 2: '#16A39B' };
 
     let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block; border-radius:8px;">`;
 
@@ -175,8 +191,8 @@ window.MapView = {
       const wait = s.waitCount || 0;
       const isHot = wait >= 3;
       const isWarm = wait > 0 && wait < 3;
-      const ring = isHot ? '#E2566B' : isWarm ? '#F59E0B' : '#2563EB';
-      const fill = isHot ? '#E2566B' : isWarm ? '#F59E0B' : '#fff';
+      const ring = isHot ? '#E15B6E' : isWarm ? '#D98A2B' : '#3A63D8';
+      const fill = isHot ? '#E15B6E' : isWarm ? '#D98A2B' : '#fff';
       const stroke = '#fff';
       const r = isHot ? 9 : 7;
       svg += `<g>
@@ -190,43 +206,43 @@ window.MapView = {
     // ④ 休息区 (蓝色虚线框 + 编号 - 不堆 emoji)
     if (restArea) {
       const [x, y] = toXY(restArea.lat, restArea.lng);
-      svg += `<rect x="${x-30}" y="${y-15}" width="60" height="30" rx="6" fill="#fff" stroke="#2563EB" stroke-width="1.2" stroke-dasharray="4 2" opacity="0.92"/>`;
-      svg += `<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="9" fill="#2563EB" font-weight="700">休息区</text>`;
+      svg += `<rect x="${x-30}" y="${y-15}" width="60" height="30" rx="6" fill="#fff" stroke="#3A63D8" stroke-width="1.2" stroke-dasharray="4 2" opacity="0.92"/>`;
+      svg += `<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="9" fill="#3A63D8" font-weight="700">休息区</text>`;
     }
 
-    // ⑤ 运营车辆 (编号 + 脉冲圆)
+    // ⑤ 运营车辆 (🚌图标 + 编号 + 脉冲)
     busArr.forEach((b) => {
       const [bx, by] = toXY(b.lat, b.lng);
-      const color = b.routeId === 2 ? '#EA580C' : '#2563EB';
+      const color = b.routeId === 2 ? '#16A39B' : '#3A63D8';
       const label = b.id ? b.id.replace('#', '') : '';
       svg += `<g>
-        <circle cx="${bx}" cy="${by}" r="13" fill="${color}" opacity="0.22">
-          <animate attributeName="r" values="10;16;10" dur="2.2s" repeatCount="indefinite"/>
+        <circle cx="${bx}" cy="${by}" r="14" fill="${color}" opacity="0.20">
+          <animate attributeName="r" values="11;17;11" dur="2.2s" repeatCount="indefinite"/>
           <animate attributeName="opacity" values="0.35;0;0.35" dur="2.2s" repeatCount="indefinite"/>
         </circle>
-        <circle cx="${bx}" cy="${by}" r="10" fill="#fff" stroke="${color}" stroke-width="2.5"/>
-        <text x="${bx}" y="${by+3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${label}</text>
+        <text x="${bx}" y="${by+5.5}" text-anchor="middle" font-size="17" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🚌</text>
+        <text x="${bx}" y="${by+19}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${color}">${label}</text>
       </g>`;
     });
 
-    // ⑥ 停放车辆 (休息区小圆点)
+    // ⑥ 停放车辆 (休息区 🚌 图标)
     const cols = 4;
     parkedBuses.forEach((b, i) => {
       if (!restArea) return;
       const [px, py] = toXY(restArea.lat, restArea.lng);
       const col = i % cols, row = Math.floor(i / cols);
-      const x = px - 18 + col * 12;
-      const y = py + 6 + row * 6;
+      const x = px - 21 + col * 14;
+      const y = py + 4 + row * 11;
       const label = b.id.replace('#', '');
-      const color = b.status === 'backup' ? '#9CA3AF' : b.status === 'standby' ? '#2563EB' : '#1F2937';
-      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#fff" stroke="${color}" stroke-width="1.2" ${b.status === 'backup' ? 'stroke-dasharray="2 1"' : ''}/>`;
-      svg += `<text x="${x}" y="${y+2.5}" text-anchor="middle" font-size="6.5" font-weight="700" fill="${color}">${label}</text>`;
+      const color = b.status === 'backup' ? '#9CA3AF' : b.status === 'standby' ? '#3A63D8' : '#1F2937';
+      svg += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🚌</text>`;
+      svg += `<text x="${x+7.5}" y="${y+4}" text-anchor="middle" font-size="6" font-weight="700" fill="${color}">${label}</text>`;
     });
 
     // ⑦ 指北针 (简化版)
     svg += `<g transform="translate(${W-26}, 22)">
       <circle r="11" fill="#fff" stroke="#CBD5E1" stroke-width="1" opacity="0.95"/>
-      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#E2566B"/>
+      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#E15B6E"/>
       <text x="0" y="-12" text-anchor="middle" font-size="8" fill="#6B7280" font-weight="600">N</text>
     </g>`;
 

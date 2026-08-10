@@ -8,11 +8,13 @@
 :root {
   --primary: #1F2937;          /* 主文字色 - 深灰 */
   --primary-light: #F3F4F6;
-  --accent: #2563EB;           /* 强调色 - 蓝 (仅用于关键操作) */
-  --accent-light: #DBEAFE;
-  --success: #16A34A;
-  --warning: #D97706;
-  --danger:  #E2566B;
+  --accent: #3A63D8;           /* 主蓝 · 一线 */
+  --accent-light: #E8EDFB;
+  --route2: #16A39B;           /* 二线 · 邻近青绿 */
+  --route2-light: #E0F3F1;
+  --success: #2E9E6B;
+  --warning: #D98A2B;
+  --danger:  #E15B6E;
   --gray-50:  #F9FAFB;
   --gray-100: #F3F4F6;
   --gray-200: #E5E7EB;
@@ -21,10 +23,10 @@
   --gray-500: #6B7280;
   --gray-700: #374151;
   --gray-900: #111827;
-  --bg:       #F9FAFB;
+  --bg:       #F6F7F9;
   --card:     #FFFFFF;
-  --border:   #E5E7EB;
-  --text:     #111827;
+  --border:   #EAECEF;
+  --text:     #1B1F27;
   --text-2:   #6B7280;
   --shadow:   0 1px 2px rgba(0,0,0,0.04);
 }
@@ -150,9 +152,9 @@ input, textarea, select { font-family: inherit; outline: none; }
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
-  background: var(--text);
+  background: var(--accent);
   color: #fff;
-  border: 1px solid var(--text);
+  border: 1px solid var(--accent);
   cursor: pointer;
   transition: all 0.15s;
   text-decoration: none;
@@ -344,3 +346,30 @@ input, textarea, select { font-family: inherit; outline: none; }
   #app { box-shadow: 0 0 0 1px var(--border); }
   .tab-bar { border-radius: 0; }
 }
+
+/* ============================================================
+   底部抽屉 Sheet (Harmonic Transit · 弹窗式收纳)
+   ============================================================ */
+.sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(17, 24, 39, 0.42);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 1500;
+  animation: sheetFade 0.2s ease;
+}
+.sheet-panel {
+  background: #fff;
+  width: 100%;
+  max-width: 480px;
+  max-height: 84vh;
+  overflow-y: auto;
+  border-radius: 16px 16px 0 0;
+  padding: 14px 14px calc(22px + env(safe-area-inset-bottom));
+  animation: sheetUp 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes sheetFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.sheet-grab { width: 36px; height: 4px; background: #E0E2E6; border-radius: 2px; margin: 0 auto 12px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sheet-title { font-size: 16px; font-weight: 600; color: var(--text); }
+.sheet-close { background: none; border: none; font-size: 18px; color: var(--text-2); cursor: pointer; padding: 2px 8px; line-height: 1; }

@@ -329,6 +329,7 @@ function seedDemoData() {
   seedDemands.forEach(({ stopId, routeId, count, minAgo }) => {
     const d = ensureDemand(stopId, routeId);
     d.count = count;
+    d.baseCount = count;   // 演示保底量: 被车接走后自动补回, 站点始终有人候车
     d.firstDemandAt = Date.now() - minAgo * 60000;
     d.seeded = true;
     d.dests = randomDests(stopId, routeId, count);
@@ -444,6 +445,13 @@ function serveStop(bus, stopId) {
       }
       d.count -= served;
       d.dests = newDests;
+
+      // 演示保底回填: seed 数据被接走后自动补回, 站点始终有人候车 (避免跑几圈后全空)
+      if (d.seeded && d.baseCount) {
+        d.count = d.baseCount;
+        d.firstDemandAt = Date.now();
+        d.dests = randomDests(stopId, bus.routeId, d.baseCount);
+      }
     }
 
     remaining = d.count;

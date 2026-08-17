@@ -19,7 +19,7 @@
       <div id="tab-drive" class="tab-pane">
         <!-- 状态 pill -->
         <div style="display:flex; gap:8px; margin-bottom:12px;">
-          <span class="pill"><span class="live" style="background:var(--ink);"></span><span id="header-bus">#01</span> · <span id="header-route">一线</span></span>
+          <span class="pill"><span id="header-bus">#01</span> · <span id="header-route">一线</span></span>
           <span class="pill pill-accent" id="header-status">运营中</span>
         </div>
 
@@ -49,17 +49,9 @@
           <div class="nc-sub" id="d-next-sub">—</div>
         </div>
 
-        <!-- 拥挤度 + 去向 -->
-        <div class="crowd-group" id="d-crowd-group">
-          <button class="crowd-btn" data-crowd="empty">空载</button>
-          <button class="crowd-btn" data-crowd="medium">适中</button>
-          <button class="crowd-btn" data-crowd="crowded">拥挤</button>
-        </div>
-        <div class="dest-summary" id="d-dest-summary">暂无乘客</div>
-
         <!-- 确认到站（强行动） -->
         <button class="bigbtn" id="btn-arrive" style="margin-top:14px;">确认到站</button>
-        <button class="btn btn-outline btn-block" id="btn-more" style="margin-top:10px;">更多操作</button>
+        <button class="btn btn-ghost btn-block" id="btn-more" style="margin-top:10px;font-weight:500;">更多操作 ›</button>
       </div>
 
       <!-- ========== TAB 2: 调度 ========== -->
@@ -77,68 +69,51 @@
 
         <button class="bigbtn" id="btn-fleet" onclick="openFleetSheet()" style="margin-top:14px;">🚌 全部车辆 · 派车 / 召回</button>
 
-        <div class="list-card" id="dp-demand-card" onclick="openDemandSheet()" style="margin-top:14px;">
-          <div class="lc-row">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <span class="lc-ic">📍</span>
-              <div><div class="lc-title">站点候车</div><div class="lc-sub" id="dp-demand-sub">查看各站实时等车</div></div>
-            </div>
-            <span class="lc-arrow">›</span>
-          </div>
-        </div>
-
         <div class="hint">点「全部车辆」进入操作台，可一键派车或召回</div>
       </div>
 
       <!-- ========== TAB 3: 异常 ========== -->
       <div id="tab-exception" class="tab-pane hidden">
-        <div class="card">
-          <div class="card-title">自主申报</div>
-          <div class="text-sm text-2 mb-3">提交后将自动同步到学生端公告</div>
-          <div class="form-group">
-            <label class="form-label">异常类型</label>
-            <select class="select" id="ex-type">
-              <option value="改道">改道施工</option>
-              <option value="加站">临时加站</option>
-              <option value="停运">恶劣天气停运</option>
-              <option value="故障">车辆故障</option>
-            </select>
+        <div class="list-card" onclick="openExceptionForm('改道施工')">
+          <div class="lc-row">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="lc-ic">🚧</span>
+              <div><div class="lc-title">自主申报</div><div class="lc-sub">车辆故障 / 晚点 / 绕行</div></div>
+            </div>
+            <span class="lc-arrow">›</span>
           </div>
-          <div class="form-group">
-            <label class="form-label">情况说明</label>
-            <textarea class="textarea" id="ex-desc" placeholder="例如：南门北站施工，临时改道"></textarea>
+        </div>
+        <div class="list-card" onclick="openExceptionForm('路况异常')">
+          <div class="lc-row">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="lc-ic">📣</span>
+              <div><div class="lc-title">问题上报</div><div class="lc-sub">路况 / 站点异常</div></div>
+            </div>
+            <span class="lc-arrow">›</span>
           </div>
-          <button class="btn btn-block" id="btn-ex-submit">提交申报</button>
         </div>
 
-        <div class="card">
-          <div class="card-title">最近上报</div>
-          <div id="ex-history"></div>
-        </div>
+        <div style="font-size:12px; color:var(--muted); margin:16px 4px 10px;">最近上报</div>
+        <div id="ex-history"></div>
       </div>
 
       <!-- ========== TAB 4: 考勤 ========== -->
       <div id="tab-attendance" class="tab-pane hidden">
-        <div class="card">
-          <div class="card-title"><span>今日打卡</span><span class="tag tag-accent" id="a-punch-status">已上班</span></div>
-          <div class="text-sm text-2 mb-2">车场定位 · 自动打卡</div>
-          <div class="text-2xl font-bold mb-2" id="a-punch-time">07:50</div>
-          <div class="text-sm text-2">位置：沁园休息区</div>
+        <button class="bigbtn" id="btn-punch" style="margin-top:4px;letter-spacing:1px;">⏱ 上班打卡</button>
+
+        <div style="font-size:12px; color:var(--muted); margin:16px 4px 8px;">本周排班</div>
+        <div class="list-card">
+          <div class="lc-row"><div><div class="lc-title">周一 — 周五</div><div class="lc-sub">08:00 — 21:30 · 一线</div></div><span class="lc-arrow"></span></div>
+        </div>
+        <div class="list-card">
+          <div class="lc-row"><div><div class="lc-title">周六</div><div class="lc-sub">09:00 — 18:00 · 二线</div></div><span class="lc-arrow"></span></div>
         </div>
 
-        <div class="card">
-          <div class="card-title">本月统计 · <span id="a-bus-label">#01</span></div>
-          <div class="grid-2" style="gap:10px;">
-            <div style="padding:14px;background:var(--surface);border-radius:16px;border:1px solid var(--line);"><div class="text-sm text-2">总趟数</div><div class="text-2xl font-bold" id="a-stats-trips">0</div></div>
-            <div style="padding:14px;background:var(--surface);border-radius:16px;border:1px solid var(--line);"><div class="text-sm text-2">完成圈数</div><div class="text-2xl font-bold" id="a-stats-laps">0</div></div>
-            <div style="padding:14px;background:var(--surface);border-radius:16px;border:1px solid var(--line);"><div class="text-sm text-2">累计运载</div><div class="text-2xl font-bold" id="a-stats-served">0</div></div>
-            <div style="padding:14px;background:var(--surface);border-radius:16px;border:1px solid var(--line);"><div class="text-sm text-2">异常次数</div><div class="text-2xl font-bold" id="a-stats-exceptions">0</div></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">车队排班表</div>
-          <div id="a-shifts"></div>
+        <div style="font-size:12px; color:var(--muted); margin:16px 4px 8px;">本月统计</div>
+        <div class="stat-row">
+          <div class="stat"><div class="stat-n" id="a-stats-trips">0</div><div class="stat-l">趟次</div></div>
+          <div class="stat"><div class="stat-n" id="a-stats-laps">0</div><div class="stat-l">圈数</div></div>
+          <div class="stat"><div class="stat-n" id="a-stats-exceptions">0</div><div class="stat-l">异常</div></div>
         </div>
       </div>
 
@@ -153,8 +128,8 @@
           <div class="me-item" onclick="openMeFeedbacks()"><span class="mi-ic">💬</span><span class="mi-tx">反馈回复</span><span class="mi-ar">›</span></div>
           <div class="me-item" onclick="openMeShifts()"><span class="mi-ic">📊</span><span class="mi-tx">我的班次</span><span class="mi-ar">›</span></div>
           <div class="me-item" onclick="openMeNotices()"><span class="mi-ic">🔔</span><span class="mi-tx">消息通知</span><span class="mi-ar">›</span></div>
+          <div class="me-item" onclick="showApiSettings()"><span class="mi-ic">⚙️</span><span class="mi-tx">设置</span><span class="mi-ar">›</span></div>
           <div class="me-item" onclick="openMeAbout()"><span class="mi-ic">ℹ️</span><span class="mi-tx">关于智行校园</span><span class="mi-ar">›</span></div>
-          <div class="me-item" onclick="showApiSettings()"><span class="mi-ic">⚙️</span><span class="mi-tx">服务器设置</span><span class="mi-ar">›</span></div>
         </div>
       </div>
 

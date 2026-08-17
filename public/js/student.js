@@ -540,13 +540,9 @@ async function loadNotices() {
     const el = document.getElementById('nt-list');
     if (notices.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无公告</div>'; return; }
     el.innerHTML = notices.map(n => `
-      <div style="padding:14px 0;border-bottom:1px solid var(--line);">
-        <div class="flex gap-2 mb-2" style="align-items:center;">
-          ${n.type === 'top' ? '<span class="tag tag-danger">置顶</span>' : '<span class="tag tag-soft">普通</span>'}
-          <span class="font-bold text-sm" style="color:var(--ink);">${n.title}</span>
-        </div>
-        <div class="text-sm text-2">${n.content || ''}</div>
-        <div class="text-sm text-2 mt-2">${n.time}</div>
+      <div class="list-card">
+        <div class="lc-title"><span class="dot"></span>${n.title}</div>
+        <div class="lc-sub">${n.time}${n.content ? ' · ' + n.content : ''}</div>
       </div>`).join('');
   } catch (e) {}
 }

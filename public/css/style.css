@@ -175,7 +175,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 /* 大主行动按钮（地图下方的“我要乘车”） */
 .bigbtn {
   width: 100%;
-  height: 52px;
+  height: 50px;
   background: var(--ink);
   color: #fff;
   border: none;

@@ -128,18 +128,6 @@ function renderAll() {
   document.getElementById('d-next-sub').textContent =
     `当前 ${cur.currentStopName || '—'} · 下站等 ${nextWait} 人 · 预计下车 ${cur.offNext || 0} 人`;
 
-  // 拥挤度按钮
-  document.querySelectorAll('#d-crowd-group [data-crowd]').forEach(b => {
-    b.classList.toggle('active', b.dataset.crowd === cur.crowd);
-  });
-
-  // 去向
-  const destEl = document.getElementById('d-dest-summary');
-  const dests = cur.destSummary || [];
-  destEl.innerHTML = dests.length === 0
-    ? '暂无乘客'
-    : '去向：' + dests.map(d => `<span class="tag tag-soft">${d.destName} ${d.count}人</span>`).join('');
-
   // 确认到站
   const btnArrive = document.getElementById('btn-arrive');
   btnArrive.disabled = cur.status !== 'operating';
@@ -162,12 +150,6 @@ function renderDispatch() {
   document.getElementById('dp-fleet-total').textContent = f.total;
   document.getElementById('dp-fleet-desc').textContent =
     `一线 ${f.line1Operating || 0} · 二线 ${f.line2Operating || 0} 运营，其余停沁园休息区待命`;
-
-  // 站点候车概要
-  const sched = s.schedule || [];
-  const totalWait = sched.reduce((sum, d) => sum + (d.waitCount || 0), 0);
-  document.getElementById('dp-demand-sub').textContent =
-    totalWait > 0 ? `共 ${totalWait} 人候车 · 点看各站` : '当前各站暂无候车';
 }
 
 // 站点候车抽屉（替代旧的“智能增发建议”）
@@ -267,44 +249,51 @@ function recallBus(id) {
 function renderExceptions() {
   const exs = App.state ? (App.state.exceptions || []) : [];
   const el = document.getElementById('ex-history');
+  if (!el) return;
   if (exs.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无记录</div>'; return; }
   el.innerHTML = exs.map(e => `
-    <div class="list-item">
-      <span class="tag tag-${e.type === '停运' || e.type === '故障' ? 'danger' : 'soft'}">${e.type}</span>
-      <div class="li-main">
-        <div class="li-title">${e.desc || e.type}</div>
-        <div class="li-sub">${e.time}</div>
+    <div class="list-card">
+      <div class="lc-row">
+        <div><div class="lc-title">${e.type}</div><div class="lc-sub">${e.desc || ''}</div></div>
+        <span class="tag tag-soft">${e.time}</span>
       </div>
     </div>`).join('');
+}
+
+function openExceptionForm(presetType) {
+  const types = ['改道施工', '临时加站', '恶劣天气停运', '车辆故障', '路况异常'];
+  const opts = types.map(t => `<option ${t === presetType ? 'selected' : ''}>${t}</option>`).join('');
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">异常申报</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div class="form-group"><label class="form-label">异常类型</label><select class="select" id="ex-type">${opts}</select></div>
+    <div class="form-group"><label class="form-label">情况说明</label><textarea class="textarea" id="ex-desc" placeholder="例如：南门北站施工，临时改道"></textarea></div>
+    <button class="btn btn-block" onclick="submitException()">提交申报</button>`);
+}
+function submitException() {
+  const type = document.getElementById('ex-type').value;
+  const desc = document.getElementById('ex-desc').value.trim();
+  if (!desc) { App.toast('请填写情况说明'); return; }
+  fetch(API_BASE + '/api/exception', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, desc })
+  }).then(r => r.json()).then(() => {
+    App.closeSheet();
+    App.toast('申报已提交');
+    renderExceptions();
+  });
 }
 
 // ========== 考勤 ==========
 function renderAttendance() {
   if (!App.state) return;
   const cur = getBus(currentBusId);
-  document.getElementById('a-bus-label').textContent = cur ? cur.id : '#01';
   document.getElementById('a-stats-trips').textContent = cur ? cur.totalTrips : 0;
   document.getElementById('a-stats-laps').textContent = cur ? cur.lapsCompleted : 0;
-  document.getElementById('a-stats-served').textContent = cur ? cur.totalServed : 0;
   document.getElementById('a-stats-exceptions').textContent = (App.state.exceptions || []).length;
-
-  const el = document.getElementById('a-shifts');
-  if (el) {
-    const buses = App.state.buses;
-    const groups = { '上午班 08:00-14:00': [], '下午班 14:00-21:30': [], '备班': [] };
-    buses.forEach(b => {
-      const key = b.shift === '上午班' ? '上午班 08:00-14:00' : b.shift === '下午班' ? '下午班 14:00-21:30' : '备班';
-      groups[key].push(b);
-    });
-    el.innerHTML = Object.entries(groups).map(([k, arr]) => `
-      <div style="margin-bottom:10px;">
-        <div class="font-bold text-sm mb-2" style="color:var(--ink);">${k}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          ${arr.map(b => `<span class="tag ${b.status === 'operating' ? 'tag-accent' : 'tag-soft'}">${b.id} ${b.driver}</span>`).join('')}
-        </div>
-      </div>`).join('') +
-      `<div class="text-sm text-2">高峰时段需求集中时，调度台将提示一键增发。司机按班次交接，不跑单趟即休。</div>`;
-  }
 }
 
 // ========== 回复反馈 ==========
@@ -456,30 +445,13 @@ function openMoreSheet() {
 }
 
 function bindActions() {
-  document.querySelectorAll('#d-crowd-group [data-crowd]').forEach(b => {
-    b.addEventListener('click', () => {
-      fetch(API_BASE + '/api/bus/crowd', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ busId: currentBusId, crowd: b.dataset.crowd })
-      }).then(r => r.json()).then(() => App.toast('拥挤度已更新'));
-    });
-  });
-
   document.getElementById('btn-arrive').addEventListener('click', doArrive);
   document.getElementById('btn-more').addEventListener('click', openMoreSheet);
 
-  document.getElementById('btn-ex-submit').addEventListener('click', () => {
-    const type = document.getElementById('ex-type').value;
-    const desc = document.getElementById('ex-desc').value.trim();
-    if (!desc) { App.toast('请填写情况说明'); return; }
-    fetch(API_BASE + '/api/exception', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, desc })
-    }).then(r => r.json()).then(() => {
-      App.toast('申报已提交');
-      document.getElementById('ex-desc').value = '';
-      renderExceptions();
-    });
+  const punch = document.getElementById('btn-punch');
+  if (punch) punch.addEventListener('click', () => {
+    punch.textContent = '⏱ 已打卡 · 现在';
+    App.toast('上班打卡成功 ✓');
   });
 }
 

@@ -18,7 +18,10 @@
       <!-- ========== TAB 1: 首页（地图主角 + 单按钮） ========== -->
       <div id="tab-home" class="tab-pane">
         <!-- 地图即主角 -->
-        <div class="map" id="map-student"></div>
+        <div class="map-wrap">
+          <div class="map" id="map-student"></div>
+          <button class="map-zoom" onclick="openMapZoom()">🔍 放大</button>
+        </div>
 
         <!-- 最近班车浮卡 -->
         <div class="floatcard" id="s-nearest">
@@ -82,7 +85,7 @@
           <div class="lc-row">
             <div style="display:flex;align-items:center;gap:12px;">
               <span class="lc-ic">🔍</span>
-              <div><div class="lc-title">失物招领 <span id="lf-count" class="lc-dot" style="background:var(--muted);"></span></div><div class="lc-sub" id="lf-sub">待认领物品</div></div>
+              <div><div class="lc-title">失物招领 <span id="lf-count" class="lc-badge" style="display:none;"></span></div><div class="lc-sub" id="lf-sub">待认领物品</div></div>
             </div>
             <span class="lc-arrow">›</span>
           </div>

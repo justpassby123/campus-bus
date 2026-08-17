@@ -371,7 +371,10 @@ async function loadServiceCounts() {
     const lf = (data.lostFound || []).length;
     const cntEl = document.getElementById('lf-count');
     const subEl = document.getElementById('lf-sub');
-    if (cntEl) cntEl.textContent = lf + ' 件';
+    if (cntEl) {
+      cntEl.textContent = lf + ' 件';
+      cntEl.style.display = lf > 0 ? 'inline-block' : 'none';
+    }
     if (subEl) subEl.textContent = lf > 0 ? `${lf} 件物品待认领` : '暂无拾获';
   } catch (e) {}
 }
@@ -529,6 +532,23 @@ function openServiceMyReports() {
       </div>`).join('');
   }
   el.innerHTML = html;
+}
+
+// ========== 地图放大（全屏查看） ==========
+function openMapZoom() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🗺 校园地图</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div class="map-zoom-view" id="map-zoom-view"></div>
+    <div class="hint">墨线为一线 · 灰虚线为二线 · 赤陶为候车站点 · 🚌 为运营车</div>`);
+  const s = App.state;
+  if (!s) return;
+  const ops = s.buses.filter(b => b.status === 'operating');
+  const restingBuses = s.buses.filter(b => b.status !== 'operating');
+  MapView.render('map-zoom-view', s.stops, ops, { restArea: s.restArea, restingBuses, routes: routesCache });
 }
 
 // ========== 公告 / 我的 ==========

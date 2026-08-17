@@ -210,9 +210,10 @@ input, textarea, select { font-family: inherit; outline: none; }
 /* ============================================================
    地图（主角）
    ============================================================ */
+.map-wrap { position: relative; }
 .map {
   width: 100%;
-  height: 230px;
+  height: 300px;
   border-radius: var(--r-map);
   overflow: hidden;
   border: 1px solid var(--line);
@@ -221,9 +222,43 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .map svg { width: 100%; height: 100%; display: block; }
 
+/* 地图放大按钮（右上角浮层） */
+.map-zoom {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border-radius: var(--r-pill);
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.15s;
+}
+.map-zoom:active { transform: scale(0.96); background: #fff; }
+
+/* 全屏地图（放大抽屉内） */
+.map-zoom-view {
+  width: 100%;
+  height: 62vh;
+  border-radius: var(--r-map);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  position: relative;
+}
+.map-zoom-view svg { width: 100%; height: 100%; display: block; }
+
 /* 地图浮卡（最近班车） */
 .floatcard {
-  margin-top: 14px;
+  margin-top: 12px;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
@@ -243,7 +278,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 /* ============================================================
    快捷入口（4 宫格）
    ============================================================ */
-.quickrow { margin-top: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.quickrow { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .qb {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 12px 0; border-radius: 16px; background: var(--surface);
@@ -295,6 +330,8 @@ input, textarea, select { font-family: inherit; outline: none; }
 .lc-sub { font-size: 12px; color: var(--muted); }
 .lc-arrow { color: var(--muted); font-size: 18px; font-weight: 700; }
 .lc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; margin-right: 7px; vertical-align: middle; }
+.lc-badge { display: inline-block; margin-left: 8px; padding: 1px 9px; border-radius: var(--r-pill); font-size: 11px; font-weight: 700; background: var(--accent-soft); color: var(--accent-deep); vertical-align: middle; }
+.lc-title { display: flex; align-items: center; flex-wrap: wrap; }
 
 /* ============================================================
    我的（极简列表）

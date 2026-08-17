@@ -11,6 +11,70 @@ let myWaits = JSON.parse(localStorage.getItem('my-waits') || '[]');
 
 function saveMyWaits() { localStorage.setItem('my-waits', JSON.stringify(myWaits)); }
 
+// ---------- GPS 离站自动取消 ----------
+// 仅当设备真实位于校园 3km 内才启用（异地/校外演示不误取消），权限被拒则静默退回服务端清扫
+let watchId = null;
+let campusCenter = null;
+const LEAVE_RADIUS_M = 100;     // 离站 > 100m 视为已离开
+const CAMPUS_RADIUS_M = 3000;   // 校园判定半径
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function computeCampusCenter() {
+  if (!stopsCache.length) return;
+  let la = 0, lo = 0;
+  stopsCache.forEach(s => { la += s.lat; lo += s.lng; });
+  campusCenter = { lat: la / stopsCache.length, lng: lo / stopsCache.length };
+}
+function ensureWaitCoords() {
+  let changed = false;
+  myWaits.forEach(w => {
+    if (w.lat == null || w.lng == null) {
+      const s = stopsCache.find(x => x.id === w.stopId);
+      if (s) { w.lat = s.lat; w.lng = s.lng; changed = true; }
+    }
+  });
+  if (changed) saveMyWaits();
+}
+function startLocationWatch() {
+  if (watchId !== null) return;
+  if (!('geolocation' in navigator)) return;   // file:// 或不支持 → 跳过
+  if (myWaits.length === 0 || !campusCenter) return;
+  try {
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const toCampus = haversine(latitude, longitude, campusCenter.lat, campusCenter.lng) * 1000;
+        if (toCampus > CAMPUS_RADIUS_M) { stopLocationWatch(); return; } // 不在校园：本会话不启用
+        let anyStay = false;
+        myWaits.slice().forEach(w => {
+          if (w.arrived || w.lat == null || w.lng == null) { anyStay = true; return; }
+          const d = haversine(latitude, longitude, w.lat, w.lng) * 1000;
+          if (d > LEAVE_RADIUS_M) {
+            resolveWait(w.stopId, w.routeId, 'leave', '检测到你已离开 ' + w.stopName + '，已自动取消等待');
+          } else {
+            anyStay = true;
+          }
+        });
+        if (!anyStay) stopLocationWatch();
+      },
+      () => { stopLocationWatch(); },  // 权限拒绝/不可用 → 静默，依赖服务端兜底
+      { enableHighAccuracy: false, maximumAge: 10000, timeout: 8000 }
+    );
+  } catch (e) { watchId = null; }
+}
+function stopLocationWatch() {
+  if (watchId !== null && 'geolocation' in navigator) {
+    try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+  }
+  watchId = null;
+}
+
 // 设置 API 地址
 function showApiSettings() {
   const current = localStorage.getItem('cb-api-base') || API_BASE || '(默认)';
@@ -74,6 +138,9 @@ async function init() {
   loadNotices();
   loadLostFound();
   renderMyWaits();
+  computeCampusCenter();
+  ensureWaitCoords();
+  startLocationWatch();
   loadServiceCounts();
 
   setInterval(async () => {
@@ -189,7 +256,7 @@ function renderMyWaits() {
   el.innerHTML = `<div class="text-sm font-bold mb-2" style="color:var(--ink);">🎫 我的等待</div>${rows}`;
 }
 
-async function resolveWait(stopId, routeId, reason) {
+async function resolveWait(stopId, routeId, reason, msg) {
   const idx = myWaits.findIndex(w => w.stopId === stopId && w.routeId === routeId);
   if (reason === 'board' && idx >= 0 && !myWaits[idx].arrived) {
     App.toast('车辆尚未到达，请稍候 🚍');
@@ -204,30 +271,47 @@ async function resolveWait(stopId, routeId, reason) {
   myWaits = myWaits.filter(w => !(w.stopId === stopId && w.routeId === routeId));
   saveMyWaits();
   renderMyWaits();
-  App.toast(reason === 'board' ? '祝你乘车愉快 🚌' : '已取消等待');
+  App.toast(msg || (reason === 'board' ? '祝你乘车愉快 🚌' : '已取消等待'));
+  if (myWaits.length === 0) stopLocationWatch();
 }
 
 function handleDemandResolved(d) {
   const idx = myWaits.findIndex(w => w.stopId === d.stopId && w.routeId === d.routeId);
-  if (idx >= 0) {
-    if (d.overflow) {
-      const nextTxt = d.nextBusId
-        ? `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
-        : `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，请等下一班`;
-      App.toast('⚠️ ' + nextTxt, 4200);
-      myWaits[idx].overflowTip = nextTxt;
-      saveMyWaits();
-      renderMyWaits();
-    } else {
-      const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
-      const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
-      App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，上车${d.served}人${offTxt}${waitTxt}`, 3800);
-      if (idx >= 0) {
-        myWaits[idx].arrived = true;
+  if (idx < 0) return;
+  // 服务端幽灵清扫: 等待超时自动取消
+  if (d.expired) {
+    myWaits.splice(idx, 1);
+    saveMyWaits();
+    renderMyWaits();
+    App.toast('等待超时，系统已自动取消（车辆久未到达）', 3000);
+    if (myWaits.length === 0) stopLocationWatch();
+    return;
+  }
+  if (d.overflow) {
+    const nextTxt = d.nextBusId
+      ? `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
+      : `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，请等下一班`;
+    App.toast('⚠️ ' + nextTxt, 4200);
+    myWaits[idx].overflowTip = nextTxt;
+    saveMyWaits();
+    renderMyWaits();
+  } else {
+    const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
+    const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
+    App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，上车${d.served}人${offTxt}${waitTxt}`, 3800);
+    myWaits[idx].arrived = true;
+    saveMyWaits();
+    renderMyWaits();
+    // 到站后 5 秒自动归档（用户未手动确认也收起）
+    setTimeout(() => {
+      const i2 = myWaits.findIndex(w => w.stopId === d.stopId && w.routeId === d.routeId);
+      if (i2 >= 0 && myWaits[i2].arrived) {
+        myWaits.splice(i2, 1);
         saveMyWaits();
+        renderMyWaits();
+        if (myWaits.length === 0) stopLocationWatch();
       }
-      renderMyWaits();
-    }
+    }, 5000);
   }
 }
 
@@ -349,9 +433,11 @@ async function doReport(stopId, routeId, destStopId) {
     const data = await res.json();
     if (data.success) {
       myWaits = myWaits.filter(w => !(w.stopId === stopId && w.routeId === routeId));
-      myWaits.unshift({ stopId, routeId, destStopName: data.destStopName || '?', stopName: data.stopName, routeName: data.routeName, time: Date.now() });
+      const stop = stopsCache.find(s => s.id === stopId);
+      myWaits.unshift({ stopId, routeId, destStopName: data.destStopName || '?', stopName: data.stopName, routeName: data.routeName, time: Date.now(), lat: stop ? stop.lat : null, lng: stop ? stop.lng : null });
       saveMyWaits();
       renderMyWaits();
+      startLocationWatch();
       const tip = data.busId
         ? `${data.stopName}→${data.destStopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟${data.full ? '（该班可能满载，建议留意下一班）' : ''}`
         : `${data.stopName}→${data.destStopName} ${data.routeName} 已上报`;

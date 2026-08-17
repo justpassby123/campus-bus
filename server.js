@@ -330,6 +330,7 @@ function seedDemoData() {
     const d = ensureDemand(stopId, routeId);
     d.count = count;
     d.firstDemandAt = Date.now() - minAgo * 60000;
+    d.seeded = true;
     d.dests = randomDests(stopId, routeId, count);
   });
   // 预置统计样本: 累计 132 次接客 / 424 分钟 → 全校均候 ≈ 3.2 分
@@ -447,8 +448,10 @@ function serveStop(bus, stopId) {
 
     remaining = d.count;
 
-    // 满载溢出: 算下一班 ETA
+    // 满载溢出: 累计溢出次数 (用于幽灵需求清扫)
     if (remaining > 0) {
+      d.overflowCount = (d.overflowCount || 0) + 1;
+      d.lastOverflowAt = Date.now();
       const stop = stopById[stopId];
       let best = null, bd = Infinity;
       for (const b of operatingBuses()) {
@@ -631,6 +634,27 @@ function broadcastState() {
   io.emit('state:update', getFullState());
 }
 
+// 幽灵需求清扫: 候车超时才清, 杜绝假拥挤/假派车 (seed 初始数据不扫)
+function sweepGhostDemands() {
+  const now = Date.now();
+  let cleared = 0;
+  for (const sid of Object.keys(state.demands)) {
+    for (const rid of Object.keys(state.demands[sid])) {
+      const d = state.demands[sid][rid];
+      if (!d || d.seeded) continue;
+      const waited = now - (d.firstDemandAt || now);
+      const overflowed = (d.overflowCount || 0) >= GHOST_OVERFLOW_MAX;
+      if (waited > GHOST_TTL_MS || overflowed) {
+        const stopId = parseInt(sid), routeId = parseInt(rid);
+        clearDemand(stopId, routeId);
+        cleared++;
+        io.emit('demand:resolved', { stopId, routeId, expired: true, served: 0, overflow: true });
+      }
+    }
+  }
+  if (cleared > 0) broadcastState();
+}
+
 // =========================================================
 //  公交自动移动模拟
 //  真实比例: 校园限速20km/h, 一圈25-30分钟
@@ -640,6 +664,11 @@ function broadcastState() {
 const TICK_MS = 2000;           // 定时器间隔 2秒
 const MOVE_STEP = 0.0001;       // 每 tick 经纬度步长
 const DWELL_TICKS = 2;          // 到站停靠 tick 数 (~4秒)
+
+// 幽灵需求清扫: 防止"人走了没点取消"导致的假拥挤 / 假派车
+const GHOST_TTL_MS = 15 * 60 * 1000;   // 候车超 15 分钟视为已离开
+const GHOST_OVERFLOW_MAX = 5;          // 被同线 ≥5 班车连续溢出视为已离开
+const GHOST_SWEEP_MS = 30000;          // 每 30 秒扫描一次
 
 function tickBus(bus) {
   if (bus.status !== 'operating') { bus.speed = 0; return; }
@@ -1047,6 +1076,7 @@ setInterval(() => {
   operatingBuses().forEach(tickBus);
   broadcastState();
 }, TICK_MS);
+setInterval(sweepGhostDemands, GHOST_SWEEP_MS);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {

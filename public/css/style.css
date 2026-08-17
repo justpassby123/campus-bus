@@ -244,17 +244,77 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .map-zoom:active { transform: scale(0.96); background: #fff; }
 
-/* 全屏地图（放大抽屉内） */
-.map-zoom-view {
+/* 全屏横屏地图弹窗 */
+.map-zoom-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.map-zoom-header {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+.map-zoom-title { font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: .5px; }
+.map-zoom-close {
+  padding: 7px 15px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.95);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.map-zoom-close:active { transform: scale(0.96); }
+.map-zoom-box {
   width: 100%;
-  height: 62vh;
+  height: 100%;
+  padding: 56px 16px 42px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.map-zoom-box > div {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  max-height: 100%;
   border-radius: var(--r-map);
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--surface);
-  position: relative;
+  box-shadow: var(--shadow-md);
+}
+.map-zoom-view {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 .map-zoom-view svg { width: 100%; height: 100%; display: block; }
+.map-zoom-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  right: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
 
 /* 地图浮卡（最近班车） */
 .floatcard {

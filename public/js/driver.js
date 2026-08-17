@@ -444,6 +444,15 @@ function openMoreSheet() {
     </div>`);
 }
 
+// ========== 地图放大（全屏横屏） ==========
+function openMapZoom() {
+  const s = App.state;
+  if (!s) return;
+  const ops = s.buses.filter(b => b.status === 'operating');
+  const parkedBuses = s.buses.filter(b => b.status !== 'operating');
+  MapView.openZoom(s.stops, ops, { restArea: s.restArea, parkedBuses, routes: routesCache });
+}
+
 function bindActions() {
   document.getElementById('btn-arrive').addEventListener('click', doArrive);
   document.getElementById('btn-more').addEventListener('click', openMoreSheet);

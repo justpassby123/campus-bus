@@ -163,8 +163,16 @@ window.MapView = {
 
     let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block; border-radius:8px;">`;
 
-    // ① 浅色底 (v3: 去实景照片, 改用纯净 surface 线稿风)
-    svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#FAFAFA"/>`;
+    // ① 插画底图 (校园建筑/水域/绿地) + 柔光遮罩
+    const useBaseMap = opts.useBaseMap !== false;
+    if (useBaseMap) {
+      const baseMapUrl = opts.baseMapUrl || (location.protocol === 'file:' ? 'http://localhost:3000/img/campus-bg.jpg' : '/img/campus-bg.jpg');
+      svg += `<image href="${baseMapUrl}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" opacity="0.95"/>`;
+      // 白色柔光遮罩：让线路与站点仍清晰可读
+      svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#fff" opacity="0.18"/>`;
+    } else {
+      svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#FAFAFA"/>`;
+    }
     // 圆角边框
     svg += `<rect x="0.5" y="0.5" width="${W-1}" height="${H-1}" rx="8" fill="none" stroke="#EDEDED" stroke-width="1"/>`;
 
@@ -246,5 +254,27 @@ window.MapView = {
 
     svg += `</svg>`;
     el.innerHTML = svg;
+  },
+
+  // 全屏横屏地图弹窗（学生端 / 司机端共用）
+  openZoom(stops, buses, opts = {}) {
+    this.closeZoom();
+    const wrap = document.createElement('div');
+    wrap.id = 'map-zoom-wrap';
+    wrap.className = 'map-zoom-backdrop';
+    wrap.innerHTML = `
+      <div class="map-zoom-header">
+        <div class="map-zoom-title">校园地图</div>
+        <button class="map-zoom-close" onclick="MapView.closeZoom()">关闭</button>
+      </div>
+      <div class="map-zoom-box"><div class="map-zoom-view" id="map-zoom-view"></div></div>
+      <div class="map-zoom-hint">建议横屏查看 · 墨线为一线 · 灰虚线为二线 · 赤陶为候车站点 · 🚌 为运营车</div>`;
+    document.body.appendChild(wrap);
+    setTimeout(() => this.render('map-zoom-view', stops, buses, opts), 20);
+  },
+
+  closeZoom() {
+    const w = document.getElementById('map-zoom-wrap');
+    if (w) w.remove();
   }
 };

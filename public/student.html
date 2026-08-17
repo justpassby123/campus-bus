@@ -50,10 +50,10 @@
         <div id="s-my-waits" style="margin-top:16px;"></div>
       </div>
 
-      <!-- ========== TAB 2: 线路（可视化候车图，内联渲染） ========== -->
+      <!-- ========== TAB 2: 线路（入口卡片，点进去看独立详情页） ========== -->
       <div id="tab-route" class="tab-pane hidden">
-        <div id="route-view"></div>
-        <div class="hint">间隔 10 分钟 · 全程约 25 分钟 · 各站实时候车一目了然</div>
+        <div id="route-list"></div>
+        <div class="hint">点线路卡片查看各站实时候车情况</div>
       </div>
 
       <!-- ========== TAB 3: 服务 ========== -->
@@ -132,6 +132,17 @@
       <button class="tab-item" data-tab="notice"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 8c0-3.5-3.5-6-7-6S5 4.5 5 8c0 3 2 5 2 8h10c0-3 2-5 2-8z"/><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/></svg></span><span>公告</span></button>
       <button class="tab-item" data-tab="me"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></span><span>我的</span></button>
     </nav>
+
+    <!-- ========== 线路详情二级页面（点入口卡片进入） ========== -->
+    <div id="route-detail" class="subpage hidden">
+      <div class="sp-head">
+        <button class="sp-back" onclick="closeRoutePage()">‹ 返回</button>
+        <div class="sp-title" id="rd-title">线路详情</div>
+        <div class="sp-spacer"></div>
+      </div>
+      <div class="sp-body" id="rd-body"></div>
+    </div>
+
   </div>
 
   <script>

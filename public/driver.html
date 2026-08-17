@@ -57,21 +57,22 @@
         <button class="btn btn-ghost btn-block" id="btn-more" style="margin-top:10px;font-weight:500;">更多操作 ›</button>
       </div>
 
-      <!-- ========== TAB 2: 调度 ========== -->
+      <!-- ========== TAB 2: 调度（入口卡片，点进去看独立整页） ========== -->
       <div id="tab-dispatch" class="tab-pane hidden">
-        <div class="stat-row">
-          <div class="stat"><div class="stat-n" id="dp-stat-op">0</div><div class="stat-l">运营中</div></div>
-          <div class="stat"><div class="stat-n" id="dp-stat-rest">0</div><div class="stat-l">待命</div></div>
-          <div class="stat"><div class="stat-n" id="dp-stat-full">0</div><div class="stat-l">满载预警</div></div>
+        <div id="dp-entry" class="route-entry" onclick="openDispatchPage()">
+          <div class="re-bus">🚌</div>
+          <div class="re-main">
+            <div class="re-name">车队调度</div>
+            <div class="re-meta">运营 / 待命 / 满载预警实时总览</div>
+          </div>
+          <div class="re-stats">
+            <div><b id="dp-entry-op">0</b><span>运营中</span></div>
+            <div><b id="dp-entry-rest">0</b><span>待命</span></div>
+            <div><b id="dp-entry-full">0</b><span>满载</span></div>
+          </div>
+          <div class="re-arrow">›</div>
         </div>
-
-        <div class="card" style="margin-top:14px;">
-          <div class="lc-title" style="margin-bottom:6px;">车队总数 <span id="dp-fleet-total">9</span> 辆</div>
-          <div class="lc-sub" id="dp-fleet-desc">一线 2 · 二线 2 运营，其余停沁园休息区待命</div>
-        </div>
-
-        <div id="dp-fleet-grid" class="fleet-grid"></div>
-        <div class="hint">点车辆可切换查看 · 待命/备班车可派车 · 运营车可召回</div>
+        <div class="hint">点卡片查看全部车辆，可派车 / 召回</div>
       </div>
 
       <!-- ========== TAB 3: 异常 ========== -->
@@ -144,6 +145,29 @@
       <button class="tab-item" data-tab="attendance"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 2v4M16 2v4"/></svg></span><span>考勤</span></button>
       <button class="tab-item" data-tab="me"><span class="tab-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></span><span>我的</span></button>
     </nav>
+
+    <!-- ========== 调度二级页面（点入口卡片进入） ========== -->
+    <div id="dispatch-detail" class="subpage hidden">
+      <div class="sp-head">
+        <button class="sp-back" onclick="closeDispatchPage()">‹ 返回</button>
+        <div class="sp-title">车队调度</div>
+        <div class="sp-spacer"></div>
+      </div>
+      <div class="sp-body">
+        <div class="card" style="margin-bottom:14px;">
+          <div class="lc-title" style="margin-bottom:8px;">车队总数 <span id="dd-total">9</span> 辆</div>
+          <div class="rv-stats">
+            <div class="rv-stat"><b id="dd-op">0</b><span>运营中</span></div>
+            <div class="rv-stat"><b id="dd-rest">0</b><span>待命</span></div>
+            <div class="rv-stat"><b id="dd-full">0</b><span>满载预警</span></div>
+          </div>
+          <div class="lc-sub" id="dd-desc" style="margin-top:8px;">一线 · 二线运营，其余停沁园休息区待命</div>
+        </div>
+        <div id="dd-fleet-grid" class="fleet-grid"></div>
+        <div class="hint">点车辆可切换查看 · 待命/备班车可派车 · 运营车可召回</div>
+      </div>
+    </div>
+
   </div>
 
   <script>

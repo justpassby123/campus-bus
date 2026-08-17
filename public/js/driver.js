@@ -6,6 +6,7 @@
 let stopsCache = [];
 let routesCache = [];
 let currentTab = 'drive';
+let dispatchPageOpen = false;
 let currentBusId = '#01';
 
 function showApiSettings() {
@@ -72,7 +73,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
   const el = document.getElementById('tab-' + tab);
   if (el) el.classList.remove('hidden');
-  if (tab === 'dispatch') renderDispatch();
+  if (tab === 'dispatch') renderDispatchEntry();
   if (tab === 'attendance') renderAttendance();
   if (tab === 'exception') renderExceptions();
 }
@@ -132,25 +133,54 @@ function renderAll() {
   const btnArrive = document.getElementById('btn-arrive');
   btnArrive.disabled = cur.status !== 'operating';
 
-  if (currentTab === 'dispatch') renderDispatch();
+  if (currentTab === 'dispatch') {
+    if (dispatchPageOpen) renderDispatchDetail();
+    else renderDispatchEntry();
+  }
 }
 
-// ========== 调度页 ==========
-function renderDispatch() {
+// ========== 调度页（入口卡片） ==========
+function fleetSummary() {
   const s = App.state;
-  if (!s) return;
   const cap = s.capacity || 25;
   const f = s.fleet || { total: 9, operating: 0, resting: 0, backup: 0 };
   const opBuses = s.buses.filter(b => b.status === 'operating');
   const fullCount = opBuses.filter(b => (b.crowd === 'crowded') || ((b.onboard || 0) >= cap * 0.9)).length;
+  return { f, fullCount, cap };
+}
 
-  document.getElementById('dp-stat-op').textContent = f.operating;
-  document.getElementById('dp-stat-rest').textContent = f.resting || 0;
-  document.getElementById('dp-stat-full').textContent = fullCount;
-  document.getElementById('dp-fleet-total').textContent = f.total;
-  document.getElementById('dp-fleet-desc').textContent =
+function renderDispatchEntry() {
+  const s = App.state;
+  if (!s) return;
+  const { f, fullCount } = fleetSummary();
+  document.getElementById('dp-entry-op').textContent = f.operating;
+  document.getElementById('dp-entry-rest').textContent = f.resting || 0;
+  document.getElementById('dp-entry-full').textContent = fullCount;
+}
+
+// ========== 调度二级页面（点入口卡片进入） ==========
+function openDispatchPage() {
+  dispatchPageOpen = true;
+  const sp = document.getElementById('dispatch-detail');
+  sp.classList.remove('hidden');
+  renderDispatchDetail();
+}
+function closeDispatchPage() {
+  dispatchPageOpen = false;
+  document.getElementById('dispatch-detail').classList.add('hidden');
+}
+
+function renderDispatchDetail() {
+  const s = App.state;
+  if (!s) return;
+  const { f, fullCount } = fleetSummary();
+  document.getElementById('dd-total').textContent = f.total;
+  document.getElementById('dd-op').textContent = f.operating;
+  document.getElementById('dd-rest').textContent = f.resting || 0;
+  document.getElementById('dd-full').textContent = fullCount;
+  document.getElementById('dd-desc').textContent =
     `一线 ${f.line1Operating || 0} · 二线 ${f.line2Operating || 0} 运营，其余停沁园休息区待命`;
-  renderFleetGrid();
+  renderFleetGrid('dd-fleet-grid');
 }
 
 // 站点候车抽屉（替代旧的“智能增发建议”）
@@ -187,11 +217,11 @@ function openDemandSheet() {
     ${body}`);
 }
 
-// ========== 车队可视化网格（调度页内，非弹窗） ==========
-function renderFleetGrid() {
+// ========== 车队可视化网格（调度二级页内） ==========
+function renderFleetGrid(gridId) {
   const s = App.state;
   if (!s) return;
-  const grid = document.getElementById('dp-fleet-grid');
+  const grid = document.getElementById(gridId);
   if (!grid) return;
   const cap = s.capacity || 25;
   grid.innerHTML = s.buses.map(b => {

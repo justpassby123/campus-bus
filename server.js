@@ -786,11 +786,15 @@ app.get('/api/route/suggest', (req, res) => {
     return { routeId, routeName: route.name, reachable, stopCount: stopCount || 0, eta, nearestBusId, full, onboard };
   });
 
-  // 推荐: 可达线路中 ETA 最小者; ETA 相同则取途经站数少者
+  // 推荐: 综合路线时间(ETA)与车辆人员情况(载客越多越不优), 分数越低越优
   let recommend = null;
   const reachables = lines.filter(l => l.reachable);
   if (reachables.length) {
-    reachables.sort((a, b) => (a.eta - b.eta) || (a.stopCount - b.stopCount));
+    reachables.sort((a, b) => {
+      const sa = a.eta + a.onboard * 0.5;
+      const sb = b.eta + b.onboard * 0.5;
+      return sa - sb;
+    });
     recommend = reachables[0].routeId;
   }
   res.json({ from, to, lines, recommend });

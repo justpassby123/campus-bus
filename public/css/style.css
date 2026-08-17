@@ -591,3 +591,60 @@ input, textarea, select { font-family: inherit; outline: none; }
 @media (min-width: 600px) {
   #app { box-shadow: 0 0 0 1px var(--line); }
 }
+
+/* ============================================================
+   司机端 · 车队可视化网格（调度页内，非弹窗）
+   ============================================================ */
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.bus-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.bus-card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.bus-card.op { border-left: 3px solid var(--ink); }
+.bus-card.standby { border-left: 3px solid var(--accent); }
+.bus-card.backup { border-left: 3px solid var(--muted); }
+.bus-card.rest { border-left: 3px solid var(--line); }
+.bus-head { display: flex; align-items: center; justify-content: space-between; }
+.bus-id { font-weight: 700; font-size: 15px; color: var(--ink); }
+.bus-status { font-size: 11px; color: var(--muted); background: var(--surface); padding: 2px 8px; border-radius: 999px; }
+.bus-sub { font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+.bus-load { height: 6px; border-radius: 999px; background: var(--surface); overflow: hidden; }
+.bus-load i { display: block; height: 100%; border-radius: 999px; transition: width var(--transition-normal); }
+.bus-load-tx { font-size: 12px; }
+.bus-actions { display: flex; gap: 6px; margin-top: 2px; }
+.bus-actions .btn { flex: 1; }
+
+/* ============================================================
+   学生端 · 乘车推荐（双白卡，无推荐高亮）
+   ============================================================ */
+.route-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  margin: 8px 0;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.route-opt:active { background: var(--surface); }
+.ro-top { display: flex; align-items: center; justify-content: space-between; }
+.ro-top b { font-size: 15px; color: var(--ink); }
+.ro-eta { font-size: 12px; color: var(--muted); }
+.ro-sub { font-size: 13px; margin-top: 6px; color: var(--ink-soft); }
+

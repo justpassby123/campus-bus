@@ -150,6 +150,7 @@ function renderDispatch() {
   document.getElementById('dp-fleet-total').textContent = f.total;
   document.getElementById('dp-fleet-desc').textContent =
     `一线 ${f.line1Operating || 0} · 二线 ${f.line2Operating || 0} 运营，其余停沁园休息区待命`;
+  renderFleetGrid();
 }
 
 // 站点候车抽屉（替代旧的“智能增发建议”）
@@ -186,42 +187,40 @@ function openDemandSheet() {
     ${body}`);
 }
 
-// ========== 车队操作台（抽屉） ==========
-function openFleetSheet() {
+// ========== 车队可视化网格（调度页内，非弹窗） ==========
+function renderFleetGrid() {
   const s = App.state;
   if (!s) return;
+  const grid = document.getElementById('dp-fleet-grid');
+  if (!grid) return;
   const cap = s.capacity || 25;
-  const listHtml = s.buses.map(b => {
+  grid.innerHTML = s.buses.map(b => {
     const rn = (routesCache.find(r => r.id === b.routeId) || {}).name || '—';
     const isOp = b.status === 'operating';
-    const sel = b.id === currentBusId;
-    const action = ['standby', 'backup', 'resting'].includes(b.status)
-      ? `<div class="grid-2" style="gap:5px;width:108px;">
-           <button class="btn btn-sm" style="padding-left:4px;padding-right:4px;" onclick="event.stopPropagation();dispatchBus('${b.id}',1)">一线</button>
-           <button class="btn btn-sm btn-outline" style="padding-left:4px;padding-right:4px;" onclick="event.stopPropagation();dispatchBus('${b.id}',2)">二线</button>
-         </div>`
-      : `<button class="btn btn-sm btn-outline" style="width:60px;padding-left:4px;padding-right:4px;" onclick="event.stopPropagation();recallBus('${b.id}')">召回</button>`;
-    const crowdTag = isOp ? `<span class="tag tag-${b.crowd === 'crowded' ? 'danger' : b.crowd === 'empty' ? 'soft' : 'soft'}">${App.crowdText(b.crowd)}</span>` : '';
-    const sub = isOp ? `${rn} · ${b.currentStopName}→${b.nextStopName} · 载客 ${b.onboard}/${cap}` : `司机 ${b.driver} · 停沁园休息区`;
-    const bg = sel ? 'background:var(--accent-soft);' : '';
-    return `<div class="list-item" style="padding:10px 4px;border-radius:8px;${bg}" onclick="selectBus('${b.id}')">
-      ${App.emojiAvatar('🚌', 32)}
-      <div class="li-main">
-        <div class="li-title">${b.id} <span class="tag tag-soft">${App.statusText(b.status)}</span> ${crowdTag}</div>
-        <div class="li-sub">${sub}</div>
-      </div>
-      ${action}
-    </div>`;
+    const isRest = ['resting', 'standby', 'backup'].includes(b.status);
+    const statusClass = isOp ? 'op' : (b.status === 'standby' ? 'standby' : b.status === 'backup' ? 'backup' : 'rest');
+    const sel = b.id === currentBusId ? 'sel' : '';
+    const onboard = b.onboard || 0;
+    const pct = Math.min(100, (onboard / cap) * 100);
+    const crowdColor = b.crowd === 'crowded' ? 'var(--accent)' : b.crowd === 'empty' ? 'var(--muted)' : 'var(--ink-soft)';
+    const sub = isOp
+      ? `${rn} · ${b.currentStopName || '—'}→${b.nextStopName || '—'}`
+      : `司机 ${b.driver} · 停沁园休息区`;
+    const loadHtml = isOp
+      ? `<div class="bus-load"><i style="width:${pct}%;background:${crowdColor};"></i></div>
+         <div class="bus-load-tx" style="color:${crowdColor};">载客 ${onboard}/${cap} · ${App.crowdText(b.crowd)}</div>`
+      : `<div class="bus-load-tx text-2">未运营</div>`;
+    const action = isRest
+      ? `<div class="bus-actions"><button class="btn btn-sm" onclick="event.stopPropagation();dispatchBus('${b.id}',1)">派一线</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();dispatchBus('${b.id}',2)">派二线</button></div>`
+      : `<div class="bus-actions"><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();recallBus('${b.id}')">召回</button></div>`;
+    return `
+      <div class="bus-card ${statusClass} ${sel}" onclick="selectBus('${b.id}')">
+        <div class="bus-head"><span class="bus-id">${b.id}</span><span class="bus-status">${App.statusText(b.status)}</span></div>
+        <div class="bus-sub">${sub}</div>
+        ${loadHtml}
+        ${action}
+      </div>`;
   }).join('');
-
-  App.showSheet(`
-    <div class="sheet-grab"></div>
-    <div class="sheet-head">
-      <div class="sheet-title">车队操作台</div>
-      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
-    </div>
-    <div class="text-sm text-2 mb-2">点车辆切换查看 · 待命/备班车可派车 · 运营车可召回</div>
-    <div id="sheet-fleet-list">${listHtml}</div>`);
 }
 
 function dispatchBus(id, routeId) {

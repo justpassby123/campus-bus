@@ -139,6 +139,8 @@ function renderMyWaits() {
     }
     const destTxt = w.destStopName ? ` → ${w.destStopName}` : '';
     const etaText = busId ? `最近 ${busId} 约 ${eta} 分钟到站` : '暂无该线运营车，请耐心等待';
+
+    // 状态1: 满载滞留
     if (w.overflowTip) {
       return `
       <div class="card" style="padding:14px;">
@@ -153,6 +155,24 @@ function renderMyWaits() {
         </div>
       </div>`;
     }
+
+    // 状态2: 车辆已到站（可确认上车）
+    if (w.arrived) {
+      return `
+      <div class="card" style="padding:14px;border:2px solid var(--accent);">
+        <div class="li-title" style="display:flex;align-items:center;gap:8px;">
+          <span style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">✓</span>
+          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-accent">已到站</span>
+        </div>
+        <div class="li-sub" style="margin-top:6px;color:var(--accent-deep);">车辆已到达，请上车后确认</div>
+        <div class="grid-2" style="gap:8px;margin-top:10px;">
+          <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 确认上车</button>
+          <button class="btn btn-outline btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+        </div>
+      </div>`;
+    }
+
+    // 状态3: 等待中（未到站，误点"我已上车"会被拦截）
     return `
       <div class="card" style="padding:14px;">
         <div class="li-title" style="display:flex;align-items:center;gap:8px;">
@@ -170,6 +190,11 @@ function renderMyWaits() {
 }
 
 async function resolveWait(stopId, routeId, reason) {
+  const idx = myWaits.findIndex(w => w.stopId === stopId && w.routeId === routeId);
+  if (reason === 'board' && idx >= 0 && !myWaits[idx].arrived) {
+    App.toast('车辆尚未到达，请稍候 🚍');
+    return;
+  }
   try {
     await fetch(API_BASE + '/api/demand/cancel', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -197,8 +222,10 @@ function handleDemandResolved(d) {
       const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
       const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
       App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，上车${d.served}人${offTxt}${waitTxt}`, 3800);
-      myWaits.splice(idx, 1);
-      saveMyWaits();
+      if (idx >= 0) {
+        myWaits[idx].arrived = true;
+        saveMyWaits();
+      }
       renderMyWaits();
     }
   }
@@ -213,7 +240,7 @@ function openRideModal() {
   }).join('');
   App.showModal(`
     <div class="modal-title">🚌 我要乘车</div>
-    <div class="text-sm text-2 mb-2">选择上车站，系统将为你推荐更快线路</div>
+    <div class="text-sm text-2 mb-2">选择上车站，系统将为你对比两条线路</div>
     <input class="input" id="ride-search" placeholder="搜索站点，如：中和楼、沁园" style="margin-bottom:10px;" />
     <div id="ride-results">${html}</div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
@@ -254,7 +281,7 @@ function reportDemand(stopId) {
   ).join('');
   App.showModal(`
     <div class="modal-title">${s.name} · 你要去哪站？</div>
-    <div class="text-sm text-2 mb-2">选择目的地，系统自动对比一线 / 二线并推荐更快的线路</div>
+    <div class="text-sm text-2 mb-2">选择目的地，系统自动对比一线 / 二线并参考车辆载客情况</div>
     <div style="max-height:52vh; overflow-y:auto;">${html}</div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
@@ -274,6 +301,11 @@ async function chooseDest(fromId, toId) {
     else App.toast('网络错误 → 打开"我的"→"服务器设置"', 3500);
   }
 }
+function crowdTextFromOnboard(onboard) {
+  if (onboard <= 7) return '空载';
+  if (onboard <= 15) return '适中';
+  return '拥挤';
+}
 function showRouteSuggest(fromId, toId, data) {
   const fromName = stopsCache.find(s => s.id === fromId).name;
   const toName = stopsCache.find(s => s.id === toId).name;
@@ -283,21 +315,23 @@ function showRouteSuggest(fromId, toId, data) {
     cards = '<div class="text-2" style="padding:8px 0;">该目的地暂不可直达，请就近换乘或选择其他站点。</div>';
   } else {
     cards = reachables.map(l => {
-      const rec = l.routeId === data.recommend;
-      const fullTag = l.full ? `<span class="tag tag-danger">满载 ${l.onboard}/${CAP}</span>` : '';
+      const crowdColor = l.onboard <= 7 ? 'var(--muted)' : l.onboard <= 15 ? 'var(--ink-soft)' : 'var(--accent)';
+      const fullTag = l.full ? `<span class="tag tag-danger">满载</span>` : '';
       return `
-        <button class="btn btn-block" style="margin:6px 0; text-align:left; padding:14px; ${rec ? 'border:2px solid var(--accent); background:var(--accent-soft); color:var(--ink);' : 'border:1px solid var(--line);'}" onclick="doReport(${fromId}, ${l.routeId}, ${toId})">
-          <div style="display:flex; align-items:center; justify-content:space-between;">
+        <button class="route-opt" onclick="doReport(${fromId}, ${l.routeId}, ${toId})">
+          <div class="ro-top">
             <b>${l.routeName}</b>
-            ${rec ? '<span class="tag tag-accent">推荐</span>' : ''}
+            <span class="ro-eta">最近 ${l.nearestBusId || '无车'} 约 ${l.eta} 分</span>
           </div>
-          <div class="text-sm text-2" style="margin-top:2px;">途经 ${l.stopCount} 站 · 最近 ${l.nearestBusId || '无车'} 约 ${l.eta} 分 ${fullTag}</div>
+          <div class="ro-sub">
+            <span style="color:${crowdColor};">载客 ${l.onboard}/${CAP}</span> · ${crowdTextFromOnboard(l.onboard)}${fullTag}
+          </div>
         </button>`;
     }).join('');
   }
   App.showModal(`
     <div class="modal-title">${fromName} → ${toName}</div>
-    <div class="text-sm text-2 mb-2">已自动对比一线 / 二线，推荐更快的线路</div>
+    <div class="text-sm text-2 mb-2">已自动对比一线 / 二线，含车辆载客情况，请自行选择</div>
     ${cards}
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }

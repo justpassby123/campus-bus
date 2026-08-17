@@ -159,18 +159,16 @@ window.MapView = {
       (1 - (lat - (minLat - pad)) / rangeLat) * H
     ];
 
-    const ROUTE_COLORS = { 1: '#3A63D8', 2: '#16A39B' };
+    const ROUTE_COLORS = { 1: '#1A1A1A', 2: '#B0B0B0' };
 
     let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block; border-radius:8px;">`;
 
-    // ① AI 校园底图 (用户实景清理版)
-    svg += `<image href="/img/campus-bg.jpg" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>`;
-    // 半透明白色遮罩, 让底图柔和不抢眼
-    svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#fff" opacity="0.32"/>`;
+    // ① 浅色底 (v3: 去实景照片, 改用纯净 surface 线稿风)
+    svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="#FAFAFA"/>`;
     // 圆角边框
-    svg += `<rect x="0.5" y="0.5" width="${W-1}" height="${H-1}" rx="8" fill="none" stroke="#E5E7EB" stroke-width="1"/>`;
+    svg += `<rect x="0.5" y="0.5" width="${W-1}" height="${H-1}" rx="8" fill="none" stroke="#EDEDED" stroke-width="1"/>`;
 
-    // ② 两条线路 (白边+主线, 让红色路线在底图上最醒目)
+    // ② 两条线路 (一线=墨黑实线 / 二线=灰色虚线, 白色描边衬底)
     routes.forEach(r => {
       const ids = r.stopIds;
       let d = '';
@@ -180,21 +178,21 @@ window.MapView = {
         const [x, y] = toXY(s.lat, s.lng);
         d += (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
       });
+      const isR2 = r.id === 2;
       const color = ROUTE_COLORS[r.id] || '#9CA3AF';
-      svg += `<path d="${d}" stroke="#fff" stroke-width="9" fill="none" opacity="0.9" stroke-linejoin="round" stroke-linecap="round"/>`;
-      svg += `<path d="${d}" stroke="${color}" stroke-width="3.5" fill="none" opacity="0.92" stroke-linejoin="round" stroke-linecap="round"/>`;
+      svg += `<path d="${d}" stroke="#fff" stroke-width="9" fill="none" opacity="0.95" stroke-linejoin="round" stroke-linecap="round"/>`;
+      svg += `<path d="${d}" stroke="${color}" stroke-width="3.5" fill="none" opacity="0.95" stroke-linejoin="round" stroke-linecap="round"${isR2 ? ' stroke-dasharray="7 6"' : ''}/>`;
     });
 
-    // ③ 站点: iOS 风格白色圆点 + 渐变色边 + 等待人数徽章
+    // ③ 站点: 白色圆点 + 墨黑/赤陶边 + 等待人数徽章 (v3)
     stops.forEach(s => {
       const [x, y] = toXY(s.lat, s.lng);
       const wait = s.waitCount || 0;
-      const isHot = wait >= 3;
-      const isWarm = wait > 0 && wait < 3;
-      const ring = isHot ? '#E15B6E' : isWarm ? '#D98A2B' : '#3A63D8';
-      const fill = isHot ? '#E15B6E' : isWarm ? '#D98A2B' : '#fff';
+      const hasWait = wait > 0;
+      const ring = hasWait ? '#C77B62' : '#1A1A1A';
+      const fill = hasWait ? '#C77B62' : '#fff';
       const stroke = '#fff';
-      const r = isHot ? 9 : 7;
+      const r = hasWait ? 9 : 7;
       svg += `<g>
         <circle cx="${x}" cy="${y}" r="${r + 2}" fill="#fff" opacity="0.85"/>
         <circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2.5"/>
@@ -203,22 +201,22 @@ window.MapView = {
       </g>`;
     });
 
-    // ④ 休息区 (蓝色虚线框 + 编号 - 不堆 emoji)
+    // ④ 休息区 (墨黑虚线框 - v3)
     if (restArea) {
       const [x, y] = toXY(restArea.lat, restArea.lng);
-      svg += `<rect x="${x-30}" y="${y-15}" width="60" height="30" rx="6" fill="#fff" stroke="#3A63D8" stroke-width="1.2" stroke-dasharray="4 2" opacity="0.92"/>`;
-      svg += `<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="9" fill="#3A63D8" font-weight="700">休息区</text>`;
+      svg += `<rect x="${x-30}" y="${y-15}" width="60" height="30" rx="6" fill="#fff" stroke="#1A1A1A" stroke-width="1.2" stroke-dasharray="4 2" opacity="0.9"/>`;
+      svg += `<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="9" fill="#1A1A1A" font-weight="700">休息区</text>`;
     }
 
-    // ⑤ 运营车辆 (🚌图标 + 编号 + 脉冲)
+    // ⑤ 运营车辆 (🚌图标 + 编号 + 脉冲, v3 墨黑/灰)
     busArr.forEach((b) => {
       const [bx, by] = toXY(b.lat, b.lng);
-      const color = b.routeId === 2 ? '#16A39B' : '#3A63D8';
+      const color = b.routeId === 2 ? '#B0B0B0' : '#1A1A1A';
       const label = b.id ? b.id.replace('#', '') : '';
       svg += `<g>
-        <circle cx="${bx}" cy="${by}" r="14" fill="${color}" opacity="0.20">
+        <circle cx="${bx}" cy="${by}" r="14" fill="${color}" opacity="0.16">
           <animate attributeName="r" values="11;17;11" dur="2.2s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" values="0.35;0;0.35" dur="2.2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.3;0;0.3" dur="2.2s" repeatCount="indefinite"/>
         </circle>
         <text x="${bx}" y="${by+5.5}" text-anchor="middle" font-size="17" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🚌</text>
         <text x="${bx}" y="${by+19}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${color}">${label}</text>
@@ -234,15 +232,15 @@ window.MapView = {
       const x = px - 21 + col * 14;
       const y = py + 4 + row * 11;
       const label = b.id.replace('#', '');
-      const color = b.status === 'backup' ? '#9CA3AF' : b.status === 'standby' ? '#3A63D8' : '#1F2937';
+      const color = b.status === 'backup' ? '#B0B0B0' : b.status === 'standby' ? '#1A1A1A' : '#1A1A1A';
       svg += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" font-family="Segoe UI Emoji, Apple Color Emoji, sans-serif">🚌</text>`;
       svg += `<text x="${x+7.5}" y="${y+4}" text-anchor="middle" font-size="6" font-weight="700" fill="${color}">${label}</text>`;
     });
 
-    // ⑦ 指北针 (简化版)
+    // ⑦ 指北针 (简化版, 赤陶指针)
     svg += `<g transform="translate(${W-26}, 22)">
-      <circle r="11" fill="#fff" stroke="#CBD5E1" stroke-width="1" opacity="0.95"/>
-      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#E15B6E"/>
+      <circle r="11" fill="#fff" stroke="#EDEDED" stroke-width="1" opacity="0.95"/>
+      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#C77B62"/>
       <text x="0" y="-12" text-anchor="middle" font-size="8" fill="#6B7280" font-weight="600">N</text>
     </g>`;
 

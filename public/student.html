@@ -2,131 +2,120 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>南审校园公交 - 学生端</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>智行校园 · 学生端</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="app">
     <header class="app-header">
-      <h1>校园公交 · 学生端</h1>
-      <span class="badge" id="header-period">平峰</span>
+      <div class="h-title">智行校园</div>
+      <div class="h-sub">学生端</div>
     </header>
 
     <div class="app-content">
 
-      <!-- ========== TAB 1: 首页 ========== -->
+      <!-- ========== TAB 1: 首页（地图主角 + 单按钮） ========== -->
       <div id="tab-home" class="tab-pane">
-        <!-- 运营概况 - 简洁卡片 -->
-        <div class="card">
-          <div class="flex gap-3" style="align-items: center;">
-            <div style="font-size: 32px;">🚌</div>
-            <div class="flex-1">
-              <div class="text-lg font-bold">校园公交运行中</div>
-              <div class="text-sm text-2" id="s-fleet-sub">当前 0 辆车在校内运行</div>
+        <!-- 地图即主角 -->
+        <div class="map" id="map-student"></div>
+
+        <!-- 最近班车浮卡 -->
+        <div class="floatcard" id="s-nearest">
+          <div class="fc-left">
+            <div class="fc-emoji">🚌</div>
+            <div>
+              <div class="fc-title" id="s-nearest-title">最近班车 —</div>
+              <div class="fc-sub" id="s-nearest-sub">正在定位运营车辆…</div>
             </div>
           </div>
-          <div class="text-sm text-2 mt-3">首班 08:00 · 末班 21:30 · 全程约 25-30 分钟</div>
+          <div class="fc-tag" id="s-nearest-tag"><span class="dot"></span>运营中</div>
         </div>
 
-        <!-- 高峰提示 -->
-        <div id="s-peak-banner" class="card hidden" style="background: #FEF3C7; border-color: #FCD34D;">
-          <div class="flex gap-2" style="align-items: center;">
-            <span style="font-size: 22px;">⏰</span>
-            <div class="flex-1">
-              <div class="font-bold">高峰时段</div>
-              <div class="text-sm text-2" id="s-peak-text">候车时间可能延长</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 我的等待卡 -->
-        <div id="s-my-waits"></div>
-
-        <!-- 地图 -->
-        <div class="card">
-          <div class="card-title">
-            <span>实时位置</span>
-          </div>
-          <div id="map-student" class="map-canvas"></div>
-        </div>
-
-        <!-- 一键上报 - 突出入口 -->
-        <div class="card" style="background: #F9FAFB; border-style: dashed;">
-          <div class="card-title">🚏 一键上报等车</div>
-          <input class="input" id="search-input" placeholder="输入站点名，如：中和楼、沁园" />
-          <div id="search-results" class="mt-3"></div>
-        </div>
+        <!-- 我要乘车（强行动） -->
+        <button class="bigbtn" onclick="openRideModal()">🚌 我要乘车</button>
 
         <!-- 快捷入口 -->
-        <div class="card">
-          <div class="card-title">常用功能</div>
-          <div class="grid-4">
-            <a class="quick-btn" onclick="switchTab('route')"><div class="qb-icon">📋</div><div class="qb-text">线路</div></a>
-            <a class="quick-btn" onclick="switchTab('service')"><div class="qb-icon">🛠</div><div class="qb-text">反馈</div></a>
-            <a class="quick-btn" onclick="switchTab('service')"><div class="qb-icon">🔍</div><div class="qb-text">失物</div></a>
-            <a class="quick-btn" onclick="switchTab('notice')"><div class="qb-icon">📢</div><div class="qb-text">公告</div></a>
-          </div>
+        <div class="quickrow">
+          <div class="qb" onclick="switchTab('route')"><div class="qb-ic">📋</div><div class="qb-tx">线路</div></div>
+          <div class="qb" onclick="switchTab('service')"><div class="qb-ic">🛠</div><div class="qb-tx">反馈</div></div>
+          <div class="qb" onclick="switchTab('service')"><div class="qb-ic">🔍</div><div class="qb-tx">失物</div></div>
+          <div class="qb" onclick="switchTab('notice')"><div class="qb-ic">📢</div><div class="qb-tx">公告</div></div>
         </div>
 
-        <!-- 运行车辆列表 -->
-        <div class="card">
-          <div class="card-title">运行车辆 <span class="more" id="s-bus-count">0 辆</span></div>
-          <div id="s-bus-list"></div>
-        </div>
-
-        <!-- 置顶公告 -->
-        <div id="s-notice-top"></div>
+        <!-- 我的等待（动态） -->
+        <div id="s-my-waits" style="margin-top:16px;"></div>
       </div>
 
-      <!-- ========== TAB 2: 线路 ========== -->
+      <!-- ========== TAB 2: 线路（两张大卡片） ========== -->
       <div id="tab-route" class="tab-pane hidden">
-        <div class="card">
-          <div class="grid-2" style="gap: 8px;">
-            <button class="btn route-btn active" data-route="1">一线</button>
-            <button class="btn btn-outline route-btn" data-route="2">二线</button>
+        <div class="route-card" onclick="openRouteSheet(1)">
+          <div class="rc-top">
+            <div class="rc-bus">🚌</div>
+            <div>
+              <div class="rc-name">一线 · 环线</div>
+              <div class="rc-desc">沁园 → 中和楼 → 南门北 ··· 16 站</div>
+            </div>
           </div>
+          <div class="rc-line"></div>
+          <div class="rc-foot"><span>首 08:00 / 末 21:30</span><span class="rc-go">查看站点 ›</span></div>
         </div>
 
-        <div class="card">
-          <div class="text-sm text-2" id="rt-current">点击站点一键上报等车</div>
+        <div class="route-card" onclick="openRouteSheet(2)">
+          <div class="rc-top">
+            <div class="rc-bus">🚌</div>
+            <div>
+              <div class="rc-name">二线 · 环线</div>
+              <div class="rc-desc">沁园 → 竞秀楼 → 润园 ··· 16 站</div>
+            </div>
+          </div>
+          <div class="rc-line" style="background:#B0B0B0;"></div>
+          <div class="rc-foot"><span>首 08:00 / 末 21:30</span><span class="rc-go">查看站点 ›</span></div>
         </div>
 
-        <div class="card">
-          <div class="card-title">环线站点</div>
-          <div id="rt-stops-list"></div>
-        </div>
+        <div class="hint">间隔 10 分钟 · 全程约 25 分钟 · 点卡片看各站实时候车</div>
       </div>
 
       <!-- ========== TAB 3: 服务 ========== -->
       <div id="tab-service" class="tab-pane hidden">
-        <div class="card">
-          <div class="card-title">🔍 失物招领 <span class="more" id="lf-count">0 条</span></div>
-          <div id="lf-list"></div>
-          <button class="btn btn-outline btn-block mt-3" onclick="showLostFoundForm()">+ 发布失物/拾物</button>
+        <div class="list-card" onclick="openServiceLostFound()">
+          <div class="lc-row">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="lc-ic">🔍</span>
+              <div><div class="lc-title">失物招领 <span id="lf-count" class="lc-dot" style="background:var(--muted);"></span></div><div class="lc-sub" id="lf-sub">待认领物品</div></div>
+            </div>
+            <span class="lc-arrow">›</span>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="card-title">🛠 反馈上报</div>
-          <div class="form-group">
-            <label class="form-label">问题类型</label>
-            <select class="select" id="fb-type">
-              <option value="晚点">车辆晚点</option>
-              <option value="卫生">车内卫生</option>
-              <option value="设施">站点设施损坏</option>
-              <option value="服务">服务态度</option>
-              <option value="其他">其他</option>
-            </select>
+        <div class="list-card" onclick="openServiceFeedback()">
+          <div class="lc-row">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="lc-ic">🛠</span>
+              <div><div class="lc-title">意见反馈</div><div class="lc-sub">上报建议或问题</div></div>
+            </div>
+            <span class="lc-arrow">›</span>
           </div>
-          <div class="form-group">
-            <label class="form-label">问题描述</label>
-            <textarea class="textarea" id="fb-content" placeholder="请详细描述问题..."></textarea>
+        </div>
+
+        <div class="list-card" onclick="openServiceForecast()">
+          <div class="lc-row">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="lc-ic">📈</span>
+              <div><div class="lc-title">出行预测</div><div class="lc-sub">未来 30 分钟拥挤度</div></div>
+            </div>
+            <span class="lc-arrow">›</span>
           </div>
-          <div class="form-group">
-            <label class="form-label">联系方式 (可选)</label>
-            <input class="input" id="fb-contact" placeholder="手机号/学号" />
+        </div>
+
+        <div class="list-card" onclick="openServiceMyReports()">
+          <div class="lc-row">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="lc-ic">🕒</span>
+              <div><div class="lc-title">我的上报</div><div class="lc-sub">查看报站与处理状态</div></div>
+            </div>
+            <span class="lc-arrow">›</span>
           </div>
-          <button class="btn btn-block" id="btn-fb-submit">提交反馈</button>
         </div>
       </div>
 
@@ -140,35 +129,20 @@
 
       <!-- ========== TAB 5: 我的 ========== -->
       <div id="tab-me" class="tab-pane hidden">
-        <div class="card">
-          <div class="flex gap-3" style="align-items: center;">
-            <div style="width:48px;height:48px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;line-height:1;">🧑</div>
-            <div class="flex-1">
-              <div class="text-lg font-bold">同学</div>
-              <div class="text-sm text-2">南审校园公交 · 学生用户</div>
-            </div>
+        <div class="me-head">
+          <div class="me-av">🧑</div>
+          <div>
+            <div class="me-name">同学</div>
+            <div class="me-tip">学号 2023****</div>
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-title">反馈记录</div>
-          <div id="me-fb-history" class="text-2 text-sm">暂无反馈</div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">车队信息</div>
-          <div id="me-fleet" class="text-2 text-sm">加载中...</div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">关于</div>
-          <div class="text-2 text-sm">v1.0 · 南审校园公交系统 · Demo</div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">服务器设置</div>
-          <div class="text-sm text-2 mb-2">当前: <code id="s-api-status" style="font-size:11px;">检测中...</code></div>
-          <button class="btn btn-outline btn-block btn-sm" onclick="showApiSettings()">修改服务器地址</button>
+        <div class="card" style="padding:6px 16px;">
+          <div class="me-item" onclick="openMeWaits()"><span class="mi-ic">🚌</span><span class="mi-tx">我的报站</span><span class="mi-ar">›</span></div>
+          <div class="me-item" onclick="openMeFeedback()"><span class="mi-ic">💬</span><span class="mi-tx">我的反馈</span><span class="mi-ar">›</span></div>
+          <div class="me-item" onclick="openMeNotices()"><span class="mi-ic">🔔</span><span class="mi-tx">消息通知</span><span class="mi-ar">›</span></div>
+          <div class="me-item" onclick="openMeAbout()"><span class="mi-ic">ℹ️</span><span class="mi-tx">关于智行校园</span><span class="mi-ar">›</span></div>
+          <div class="me-item" onclick="showApiSettings()"><span class="mi-ic">⚙️</span><span class="mi-tx">服务器设置</span><span class="mi-ar">›</span></div>
         </div>
       </div>
 

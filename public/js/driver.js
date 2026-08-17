@@ -1,12 +1,12 @@
 // ============================================================
-//  driver.js - 司机端逻辑 v5
-//  ① 每站两线人数并列  ③ 调度台派车/召回  ⑥ 载客/22  ⑦ 排班
+//  driver.js - 司机端逻辑 v6 (v3 设计系统)
+//  功能不变：行车 / 调度(派车召回) / 异常 / 考勤
+//  移除非必要字样：智能增发建议 / 演示高峰 / 晚课放学
 // ============================================================
 let stopsCache = [];
 let routesCache = [];
 let currentTab = 'drive';
 let currentBusId = '#01';
-let currentDemand = [];
 
 function showApiSettings() {
   const current = localStorage.getItem('cb-api-base') || API_BASE || '(默认)';
@@ -21,20 +21,18 @@ function showApiSettings() {
       <button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button>
     </div>`);
 }
-
 function saveApiSettings() {
   const v = document.getElementById('api-url-input').value.trim();
   if (v) localStorage.setItem('cb-api-base', v);
   else localStorage.removeItem('cb-api-base');
   location.reload();
 }
-
 function updateApiStatus(ok) {
   const el = document.getElementById('d-api-status');
   if (!el) return;
   const base = API_BASE || location.origin;
   el.textContent = ok ? `已连接 ${base}` : `未连接 ${base}`;
-  el.style.color = ok ? '#2E9E6B' : '#E15B6E';
+  el.style.color = ok ? '#2E9E6B' : '#C77B62';
 }
 
 async function init() {
@@ -62,7 +60,6 @@ async function init() {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
   bindActions();
-  loadFeedbacks();
 
   setInterval(async () => {
     try { await App.fetchState(); renderAll(); } catch (e) {}
@@ -78,11 +75,14 @@ function switchTab(tab) {
   if (tab === 'dispatch') renderDispatch();
   if (tab === 'attendance') renderAttendance();
   if (tab === 'exception') renderExceptions();
-  if (tab === 'me') loadFeedbacks();
 }
 
 function getBus(id) {
   return App.state ? App.state.buses.find(b => b.id === id) : null;
+}
+function selectBus(id) {
+  currentBusId = id;
+  renderAll();
 }
 
 function renderAll() {
@@ -91,237 +91,121 @@ function renderAll() {
 
   const cur = getBus(currentBusId) || s.buses[0];
   document.getElementById('header-bus').textContent = cur.id;
+  const route = routesCache.find(r => r.id === cur.routeId) || routesCache[0];
+  document.getElementById('header-route').textContent = route ? route.name : '一线';
   document.getElementById('header-status').textContent = App.statusText(cur.status);
-
-  const f = s.fleet || { total: 9, backup: 1, operating: 0, resting: 0 };
-  document.getElementById('d-fleet-sub').textContent = `运营 ${f.operating} · 待命 ${f.resting || 0}`;
-  renderFleetSummary();
 
   // 休息区面板
   const restPanel = document.getElementById('d-rest-panel');
-  if (cur.status === 'resting') {
+  if (['resting', 'standby', 'backup'].includes(cur.status)) {
     restPanel.classList.remove('hidden');
-    document.getElementById('d-rest-laps').textContent = `完成 ${cur.lapsCompleted} 圈 · 准备发车`;
-  } else if (cur.status === 'standby') {
-    restPanel.classList.remove('hidden');
-    document.getElementById('d-rest-laps').textContent = '待命车辆 · 可派车';
-  } else if (cur.status === 'backup') {
-    restPanel.classList.remove('hidden');
-    document.getElementById('d-rest-laps').textContent = '备班车辆 · 紧急派车';
+    document.getElementById('d-rest-laps').textContent =
+      cur.status === 'resting' ? `完成 ${cur.lapsCompleted} 圈 · 准备发车`
+        : cur.status === 'standby' ? '待命车辆 · 可派车'
+          : '备班车辆 · 紧急派车';
   } else {
     restPanel.classList.add('hidden');
   }
-
-  // 当前车辆
-  const route = routesCache.find(r => r.id === cur.routeId) || routesCache[0];
-  const busNum = cur.id.replace('#','');
-  document.getElementById('d-bus-id').textContent = '车辆 ' + busNum;
-  // 本车卡头像为静态 emoji (🚌), 无需 JS 注入
-  document.getElementById('d-driver').textContent = '司机：' + cur.driver + (cur.shift ? ' · ' + cur.shift : '');
-  const routeTag = document.getElementById('d-route-tag');
-  if (routeTag) { routeTag.textContent = route.name; routeTag.className = 'tag tag-' + (cur.routeId === 2 ? 'route2' : 'accent'); }
-  // 左侧状态色条 (iOS化)
-  const bar = document.getElementById('d-status-bar');
-  if (bar) {
-    const sc = App.statusClass(cur.status);
-    bar.style.background = sc === 'success' ? 'var(--success)' : sc === 'warning' ? 'var(--warning)' : 'var(--gray-400)';
-  }
-  document.getElementById('d-current-stop').textContent = cur.currentStopName;
-  document.getElementById('d-next-stop').textContent = cur.nextStopName;
 
   // 地图
   const ops = s.buses.filter(b => b.status === 'operating');
   const parkedBuses = s.buses.filter(b => b.status !== 'operating');
   MapView.render('map-driver', s.stops, ops, { restArea: s.restArea, parkedBuses, routes: routesCache });
 
-  // 拥挤度按钮
-  document.querySelectorAll('#d-crowd-group [data-crowd]').forEach(b => {
-    if (b.dataset.crowd === cur.crowd) {
-      b.className = b.dataset.crowd === 'empty' ? 'btn btn-success' :
-                    b.dataset.crowd === 'medium' ? 'btn' : 'btn btn-danger';
-    } else {
-      b.className = 'btn btn-outline';
-    }
-  });
+  // 载客
+  const cap = s.capacity || 25;
+  const onboard = cur.onboard || 0;
+  document.getElementById('d-load-text').textContent = `${onboard} / ${cap} 人`;
+  document.getElementById('d-load-bar').style.width = Math.min(100, (onboard / cap) * 100) + '%';
 
-  // 载客量 + 下一站等待人数
-  document.getElementById('d-onboard').textContent = cur.onboard || 0;
-  document.getElementById('d-capacity').textContent = s.capacity || 25;
-  document.getElementById('d-off-next').textContent = cur.offNext || 0;
+  // 下一站
+  document.getElementById('d-next-name').textContent = cur.nextStopName || '—';
   let nextWait = 0;
   if (cur.nextStopId) {
     const ns = s.stops.find(x => x.id === cur.nextStopId);
     if (ns) nextWait = cur.routeId === 1 ? ns.wait1 : ns.wait2;
   }
-  document.getElementById('d-next-wait').textContent = nextWait;
+  document.getElementById('d-next-sub').textContent =
+    `当前 ${cur.currentStopName || '—'} · 下站等 ${nextWait} 人 · 预计下车 ${cur.offNext || 0} 人`;
 
-  // v8: 车上乘客去向
+  // 拥挤度按钮
+  document.querySelectorAll('#d-crowd-group [data-crowd]').forEach(b => {
+    b.classList.toggle('active', b.dataset.crowd === cur.crowd);
+  });
+
+  // 去向
   const destEl = document.getElementById('d-dest-summary');
-  if (destEl) {
-    const dests = cur.destSummary || [];
-    if (dests.length === 0) {
-      destEl.innerHTML = '暂无乘客';
-    } else {
-      destEl.innerHTML = dests.map(d =>
-        `<span class="tag" style="margin: 2px;">${d.destName} ${d.count}人</span>`
-      ).join('');
-    }
-  }
+  const dests = cur.destSummary || [];
+  destEl.innerHTML = dests.length === 0
+    ? '暂无乘客'
+    : '去向：' + dests.map(d => `<span class="tag tag-soft">${d.destName} ${d.count}人</span>`).join('');
 
-  // 状态按钮
+  // 确认到站
   const btnArrive = document.getElementById('btn-arrive');
-  const btnTempStop = document.getElementById('btn-temp-stop');
-  const btnStatus = document.getElementById('btn-status');
-  const isOperating = cur.status === 'operating';
-  const isParked = ['resting', 'standby', 'backup'].includes(cur.status);
-  btnArrive.disabled = !isOperating;
-  btnTempStop.disabled = !isOperating;
-  if (isParked) {
-    btnStatus.textContent = '已在休息区';
-    btnStatus.disabled = true;
-  } else {
-    btnStatus.textContent = '召回休息区';
-    btnStatus.disabled = false;
-  }
+  btnArrive.disabled = cur.status !== 'operating';
 
-  document.getElementById('d-period').textContent = App.periodText(s.timePeriod) + '时段';
-
-  // 我的页面头像为静态 emoji (🚌), 无需 JS 注入
   if (currentTab === 'dispatch') renderDispatch();
 }
 
-// 车队概览 (调度页主区域只显示概要, 详情收进底部抽屉)
-function renderFleetSummary() {
-  const s = App.state;
-  if (!s) return;
-  const el = document.getElementById('dp-fleet-summary');
-  if (!el) return;
-  const f = s.fleet || { total: 9, operating: 0, resting: 0, backup: 0 };
-  const cur = getBus(currentBusId);
-  const curTxt = cur ? `${cur.id}（${App.statusText(cur.status)}）` : '—';
-  el.innerHTML =
-    `当前查看：<b class="font-bold" style="color:var(--text);">${curTxt}</b><br>` +
-    `运营 <b style="color:var(--success);">${f.operating}</b> 辆 · 待命 <b style="color:var(--warning);">${f.resting || 0}</b> 辆 · 备班 ${f.backup || 0} 辆<br>` +
-    `共 ${f.total} 辆 · 点下方按钮查看与管理`;
-}
-
-function selectBus(id) {
-  currentBusId = id;
-  renderAll();
-}
-
-// ① 需求列表: (已合并到调度页站点列表, 保留函数兼容)
-function renderDemandList() {
-  const list = document.getElementById('d-demand-list');
-  if (!list) return;
-  const cnt = document.getElementById('d-demand-count');
-  const waited = (s.stops || []).filter(st => st.waitCount > 0);
-  const total = waited.reduce((sum, st) => sum + st.waitCount, 0);
-  cnt.textContent = total + ' 人';
-  cnt.className = total > 0 ? 'tag tag-danger' : 'tag';
-
-  if (waited.length === 0) {
-    list.innerHTML = '<div class="text-2 text-center" style="padding: 16px;">暂无等车需求</div>';
-    return;
-  }
-  const sched = s.schedule || [];
-  waited.sort((a, b) => b.waitCount - a.waitCount);
-  list.innerHTML = waited.map(st => {
-    const e1 = sched.find(x => x.id === st.id && x.routeId === 1);
-    const e2 = sched.find(x => x.id === st.id && x.routeId === 2);
-    const sub = [];
-    if (st.wait1 > 0 && e1) sub.push(`一线最近 ${e1.nearestBusId || '无车'}${e1.nearestBusId ? ' 约' + e1.eta + '分' : ''}`);
-    if (st.wait2 > 0 && e2) sub.push(`二线最近 ${e2.nearestBusId || '无车'}${e2.nearestBusId ? ' 约' + e2.eta + '分' : ''}`);
-    // v8: 目的地标签
-    let destTags = '';
-    if (e1 && e1.destList && e1.destList.length > 0) {
-      destTags += e1.destList.map(d => `<span class="tag" style="font-size:10px; margin:1px;">一线→${d.destName} ${d.count}</span>`).join('');
-    }
-    if (e2 && e2.destList && e2.destList.length > 0) {
-      destTags += e2.destList.map(d => `<span class="tag tag-accent" style="font-size:10px; margin:1px;">二线→${d.destName} ${d.count}</span>`).join('');
-    }
-    return `
-      <div class="list-item">
-        <div style="width: 30px; height: 30px; border-radius: 50%; background: #F3F4F6; color:#374151; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px;">${st.name.slice(0,1)}</div>
-        <div class="li-main">
-          <div class="li-title">${st.name}
-            ${st.wait1 > 0 ? `<span class="tag tag-danger">一线 ${st.wait1}</span>` : ''}
-            ${st.wait2 > 0 ? `<span class="tag tag-accent">二线 ${st.wait2}</span>` : ''}
-          </div>
-          <div class="li-sub">${sub.join(' · ') || '等待中'}</div>
-          ${destTags ? `<div style="margin-top:4px;">${destTags}</div>` : ''}
-        </div>
-      </div>`;
-  }).join('');
-}
-
-// ③ 调度台 (弹窗式收纳: 主页面只显示 Top3 建议 + 车队概览)
+// ========== 调度页 ==========
 function renderDispatch() {
   const s = App.state;
   if (!s) return;
+  const cap = s.capacity || 25;
+  const f = s.fleet || { total: 9, operating: 0, resting: 0, backup: 0 };
+  const opBuses = s.buses.filter(b => b.status === 'operating');
+  const fullCount = opBuses.filter(b => (b.crowd === 'crowded') || ((b.onboard || 0) >= cap * 0.9)).length;
+
+  document.getElementById('dp-stat-op').textContent = f.operating;
+  document.getElementById('dp-stat-rest').textContent = f.resting || 0;
+  document.getElementById('dp-stat-full').textContent = fullCount;
+  document.getElementById('dp-fleet-total').textContent = f.total;
+  document.getElementById('dp-fleet-desc').textContent =
+    `一线 ${f.line1Operating || 0} · 二线 ${f.line2Operating || 0} 运营，其余停沁园休息区待命`;
+
+  // 站点候车概要
   const sched = s.schedule || [];
-
-  renderFleetSummary();
-
   const totalWait = sched.reduce((sum, d) => sum + (d.waitCount || 0), 0);
-  const hintEl = document.getElementById('dp-hint');
-  if (hintEl) hintEl.textContent = `共 ${totalWait} 人候车`;
+  document.getElementById('dp-demand-sub').textContent =
+    totalWait > 0 ? `共 ${totalWait} 人候车 · 点看各站` : '当前各站暂无候车';
+}
 
-  const sug = document.getElementById('dp-suggest');
-  if (!sug) return;
-  if (sched.length === 0) {
-    sug.innerHTML = '<div class="text-2 text-center" style="padding: 12px;">当前候车压力小，暂无需增发</div>';
+// 站点候车抽屉（替代旧的“智能增发建议”）
+function openDemandSheet() {
+  const s = App.state;
+  if (!s) return;
+  const sched = (s.schedule || []).slice().sort((a, b) => (b.waitCount || 0) - (a.waitCount || 0));
+  const waited = sched.filter(d => (d.waitCount || 0) > 0);
+  let body;
+  if (waited.length === 0) {
+    body = '<div class="text-2 text-center" style="padding:16px;">当前各站暂无候车</div>';
   } else {
-    sug.innerHTML = sched.slice(0, 3).map((d, i) => {
-      const pc = d.priority === 'high' ? 'var(--danger)' : d.priority === 'medium' ? 'var(--warning)' : 'var(--gray-400)';
-      const ovTag = d.overflowTotal > 0 ? `<span class="tag tag-warning" style="font-size:10px;">溢出${d.overflowTotal}</span>` : '';
+    body = waited.map((d, i) => {
+      const pc = d.priority === 'high' ? 'var(--accent)' : d.priority === 'medium' ? 'var(--ink-soft)' : 'var(--muted)';
+      const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
+        ? `<button class="btn btn-sm" style="margin-top:8px;" onclick="quickDispatch('${d.nearbyBusId}',${d.routeId});App.closeSheet();">一键增发 ${d.nearbyBusId}</button>` : '';
       return `
-        <div class="list-item" style="cursor:pointer; border-radius:6px; padding:10px 4px;" onclick="openStationSheet(${d.id})">
-          <div style="width:26px;height:26px;border-radius:50%;background:${pc};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;">${i + 1}</div>
+        <div class="list-item" style="border-radius:8px;padding:10px 4px;">
+          <div style="width:26px;height:26px;border-radius:50%;background:${pc};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${i + 1}</div>
           <div class="li-main">
-            <div class="li-title">${d.name} · ${d.routeName} <span class="tag tag-danger">${d.waitCount}人</span> ${ovTag}</div>
-            <div class="li-sub">已等 ${d.waitDuration} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}</div>
+            <div class="li-title">${d.name} · ${d.routeName} <span class="tag tag-danger">${d.waitCount}人</span></div>
+            <div class="li-sub">已等 ${d.waitDuration || 0} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}</div>
+            ${dispatchBtn}
           </div>
-          <span style="color:var(--accent); font-size:18px; font-weight:700;">›</span>
         </div>`;
     }).join('');
   }
-}
-
-// 底部抽屉: 站点候车详情 + 环线 16 站
-async function openStationSheet(stopId) {
-  try { await App.fetchState(); } catch (e) {}
-  const s = App.state;
-  if (!s) return;
-  const sched = s.schedule || [];
-  const d = sched.find(x => x.id === stopId) || {};
-  const destTags = (d.destList || []).map(dst =>
-    `<span class="tag" style="font-size:10px; margin:1px;">→${dst.destName} ${dst.count}</span>`).join('');
-  const ovTag = d.overflowTotal > 0 ? `<span class="tag tag-warning" style="font-size:10px;">历史溢出${d.overflowTotal}人</span>` : '';
-  const dispatchBtn = (d.suggestDispatch && d.nearbyBusId)
-    ? `<button class="btn btn-sm btn-danger" style="margin-top:8px;" onclick="quickDispatch('${d.nearbyBusId}',${d.routeId});App.closeSheet();">一键增发 ${d.nearbyBusId}</button>` : '';
-
   App.showSheet(`
     <div class="sheet-grab"></div>
     <div class="sheet-head">
-      <div class="sheet-title">${d.name || '站点'} · 候车详情</div>
+      <div class="sheet-title">📍 站点候车</div>
       <button class="sheet-close" onclick="App.closeSheet()">✕</button>
     </div>
-    <div style="padding:10px 0; border-bottom:1px solid var(--border); margin-bottom:10px;">
-      <div class="li-title" style="font-size:15px;">${d.name || ''} <span class="tag tag-danger">${d.waitCount || 0}人</span> ${ovTag}</div>
-      <div class="li-sub">已等 ${d.waitDuration || 0} 分 · 最近 ${d.nearestBusId || '无车'}${d.nearestBusId ? ' 约' + d.eta + '分' : ''}${d.avgWait ? ' · 历史均候 ' + d.avgWait + '分' : ''}</div>
-      ${destTags ? `<div style="margin-top:4px;">${destTags}</div>` : ''}
-      ${dispatchBtn}
-    </div>
-    <div class="text-sm text-2 mb-2">环线站点 · 实时候车</div>
-    <div id="sheet-stops-list"></div>
-  `);
-  renderDispatchStops('sheet-stops-list');
+    ${body}`);
 }
 
-// 底部抽屉: 车队全部车辆 + 演示控制
-async function openFleetSheet() {
-  try { await App.fetchState(); } catch (e) {}
+// ========== 车队操作台（抽屉） ==========
+function openFleetSheet() {
   const s = App.state;
   if (!s) return;
   const cap = s.capacity || 25;
@@ -330,45 +214,32 @@ async function openFleetSheet() {
     const isOp = b.status === 'operating';
     const sel = b.id === currentBusId;
     const action = ['standby', 'backup', 'resting'].includes(b.status)
-      ? `<div class="grid-2" style="gap:5px; width:108px;">
+      ? `<div class="grid-2" style="gap:5px;width:108px;">
            <button class="btn btn-sm" style="padding-left:4px;padding-right:4px;" onclick="event.stopPropagation();dispatchBus('${b.id}',1)">一线</button>
            <button class="btn btn-sm btn-outline" style="padding-left:4px;padding-right:4px;" onclick="event.stopPropagation();dispatchBus('${b.id}',2)">二线</button>
          </div>`
-      : `<button class="btn btn-sm btn-outline-danger" style="width:56px; padding-left:4px; padding-right:4px;" onclick="event.stopPropagation();recallBus('${b.id}')">召回</button>`;
-    const crowdTag = isOp ? `<span class="tag tag-${b.crowd === 'crowded' ? 'danger' : b.crowd === 'empty' ? 'success' : ''}">${App.crowdText(b.crowd)}</span>` : '';
-    const offTag = isOp && b.offNext > 0 ? ` · 下站下${b.offNext}人` : '';
-    const sub = isOp ? `${rn} · ${b.currentStopName}→${b.nextStopName} · 载客 ${b.onboard}/${cap}${offTag}` : `司机 ${b.driver} · 停沁园休息区`;
-    const bg = sel ? 'background:#EFF6FF;' : '';
-    return `<div class="list-item" style="padding:10px 4px; border-radius:6px; ${bg}" onclick="selectBus('${b.id}')">
+      : `<button class="btn btn-sm btn-outline" style="width:60px;padding-left:4px;padding-right:4px;" onclick="event.stopPropagation();recallBus('${b.id}')">召回</button>`;
+    const crowdTag = isOp ? `<span class="tag tag-${b.crowd === 'crowded' ? 'danger' : b.crowd === 'empty' ? 'soft' : 'soft'}">${App.crowdText(b.crowd)}</span>` : '';
+    const sub = isOp ? `${rn} · ${b.currentStopName}→${b.nextStopName} · 载客 ${b.onboard}/${cap}` : `司机 ${b.driver} · 停沁园休息区`;
+    const bg = sel ? 'background:var(--accent-soft);' : '';
+    return `<div class="list-item" style="padding:10px 4px;border-radius:8px;${bg}" onclick="selectBus('${b.id}')">
       ${App.emojiAvatar('🚌', 32)}
       <div class="li-main">
-        <div class="li-title">${b.id} <span class="tag">${App.statusText(b.status)}</span> ${crowdTag}</div>
+        <div class="li-title">${b.id} <span class="tag tag-soft">${App.statusText(b.status)}</span> ${crowdTag}</div>
         <div class="li-sub">${sub}</div>
       </div>
       ${action}
     </div>`;
   }).join('');
 
-  const peak = s.peak || {};
-  const peakTxt = peak.active ? '高峰中 · 退出' : '开启演示高峰';
-  const peakCls = peak.active ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-danger';
-
   App.showSheet(`
     <div class="sheet-grab"></div>
     <div class="sheet-head">
-      <div class="sheet-title">车队管理</div>
+      <div class="sheet-title">车队操作台</div>
       <button class="sheet-close" onclick="App.closeSheet()">✕</button>
     </div>
-    <div style="padding:10px 0; border-bottom:1px solid var(--border); margin-bottom:8px;">
-      <div class="text-sm text-2 mb-2">演示控制</div>
-      <div class="grid-2" style="gap:8px;">
-        <button class="${peakCls}" onclick="togglePeak();openFleetSheet();">${peakTxt}</button>
-        <button class="btn btn-sm" style="background:var(--route2);border-color:var(--route2);color:#fff;" onclick="demoEveningRush();openFleetSheet();">晚课放学</button>
-      </div>
-    </div>
-    <div id="sheet-fleet-list">${listHtml}</div>
-    <div class="text-sm text-2" style="margin-top:10px; text-align:center;">点车辆切换查看 · 待命车可派车 · 运营车可召回</div>
-  `);
+    <div class="text-sm text-2 mb-2">点车辆切换查看 · 待命/备班车可派车 · 运营车可召回</div>
+    <div id="sheet-fleet-list">${listHtml}</div>`);
 }
 
 function dispatchBus(id, routeId) {
@@ -379,37 +250,9 @@ function dispatchBus(id, routeId) {
     App.toast(d.success ? `${id} 已派往${d.routeName}` : '派车失败: ' + (d.error || ''));
   });
 }
-
-// ③ 调度台一键增发 (压力站直接派最近待命车)
 function quickDispatch(id, routeId) {
-  fetch(API_BASE + '/api/bus/route', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ busId: id, routeId })
-  }).then(r => r.json()).then(d => {
-    App.toast(d.success ? `${id} 已增发 ${d.routeName}` : '增发失败: ' + (d.error || ''));
-  });
+  dispatchBus(id, routeId);
 }
-
-// 演示高峰模式开关 (答辩演示随时可触发)
-function togglePeak() {
-  fetch(API_BASE + '/api/peak/toggle', { method: 'POST' })
-    .then(r => r.json()).then(d => {
-      App.toast(d.active ? '已开启演示高峰模式' : '已退出高峰模式');
-      renderDispatch();
-    });
-}
-
-// 一键演示晚课放学 (中和楼/敏行楼/竞秀楼 并发高峰 + 强制高峰)
-function demoEveningRush() {
-  fetch(API_BASE + '/api/demo/evening-rush', { method: 'POST' })
-    .then(r => r.json()).then(d => {
-      if (d.success) {
-        App.toast('🌆 已模拟晚课放学高峰：中和楼/敏行楼/竞秀楼并发候车', 3500);
-        renderDispatch();
-      } else App.toast('演示注入失败');
-    });
-}
-
 function recallBus(id) {
   if (!confirm('将 ' + id + ' 召回沁园休息区？')) return;
   fetch(API_BASE + '/api/bus/recall', {
@@ -420,63 +263,22 @@ function recallBus(id) {
   });
 }
 
-// 环线站点·实时候车 (合并自旧行程页，增加实时需求/ETA)
-function renderDispatchStops(targetId = 'dp-stops-list') {
-  if (!App.state || !routesCache.length || !stopsCache.length) return;
-  const s = App.state;
-  const cur = getBus(currentBusId);
-  const curRouteId = cur ? cur.routeId : 1;
-  const route = routesCache.find(r => r.id === curRouteId) || routesCache[0];
-  const curIdx = cur ? (cur.currentStopIdx || 0) : 0;
-  const sched = s.schedule || [];
-  const stopMap = {};
-  (s.stops || []).forEach(st => { stopMap[st.id] = st; });
-
-  const el = document.getElementById(targetId);
-  if (!el) return;
-  el.innerHTML = route.stopIds.map((id, idx) => {
-    const stop = stopsCache.find(x => x.id === id);
-    if (!stop) return '';
-    const isLoopEnd = idx === route.stopIds.length - 1;
-    const isCurrent = idx === curIdx;
-    const isPassed = idx < curIdx;
-    const d = stopMap[id];
-    const wait1 = d ? d.wait1 : 0;
-    const wait2 = d ? d.wait2 : 0;
-    const hasWait = wait1 > 0 || wait2 > 0;
-    const sc1 = sched.find(x => x.id === id && x.routeId === 1);
-    const sc2 = sched.find(x => x.id === id && x.routeId === 2);
-    const eta1 = sc1 && sc1.eta ? sc1.eta : 0;
-    const eta2 = sc2 && sc2.eta ? sc2.eta : 0;
-    // 建筑类型
-    const bldg = buildingType(stop.name);
-    const numColor = isCurrent ? '#3A63D8' : isPassed ? '#D1D5DB' : '#9CA3AF';
-    const bg = isCurrent ? '#EFF6FF' : 'transparent';
-    return `
-      <div class="list-item" style="background:${bg}; border-radius:6px; padding:8px 4px;">
-        <div style="width:28px;height:28px;border-radius:50%;background:#fff;border:1.5px solid ${numColor};color:${numColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">${idx + 1}</div>
-        <div class="li-main">
-          <div class="li-title">${bldg.icon} ${stop.name}${isLoopEnd ? ' <span class="tag">回起点</span>' : ''}${isCurrent ? ' <span class="tag tag-accent">当前位置</span>' : ''}</div>
-          <div class="li-sub">
-            ${bldg.label}
-            ${wait1 > 0 ? ` · <span style="color:var(--danger);">一线 ${wait1}人${eta1 ? '(' + eta1 + '分)' : ''}</span>` : ''}
-            ${wait2 > 0 ? ` · <span style="color:var(--route2);">二线 ${wait2}人${eta2 ? '(' + eta2 + '分)' : ''}</span>` : ''}
-            ${!hasWait && !isLoopEnd ? ' · 无候车' : ''}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
+// ========== 异常 ==========
+function renderExceptions() {
+  const exs = App.state ? (App.state.exceptions || []) : [];
+  const el = document.getElementById('ex-history');
+  if (exs.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无记录</div>'; return; }
+  el.innerHTML = exs.map(e => `
+    <div class="list-item">
+      <span class="tag tag-${e.type === '停运' || e.type === '故障' ? 'danger' : 'soft'}">${e.type}</span>
+      <div class="li-main">
+        <div class="li-title">${e.desc || e.type}</div>
+        <div class="li-sub">${e.time}</div>
+      </div>
+    </div>`).join('');
 }
 
-// 站点建筑类型
-function buildingType(name) {
-  if (name.includes('餐厅')) return { icon: '🍽️', label: '餐饮区', color: '#F59E0B' };
-  if (name.includes('南门')) return { icon: '🚪', label: '校门', color: '#8B5CF6' };
-  if (name.includes('楼')) return { icon: '🏫', label: '教学楼', color: '#3A63D8' };
-  if (name.includes('园') || name.includes('竹苑') || name.includes('润园')) return { icon: '🏠', label: '宿舍区', color: '#2E9E6B' };
-  return { icon: '📍', label: '校园站点', color: '#6B7280' };
-}
-
+// ========== 考勤 ==========
 function renderAttendance() {
   if (!App.state) return;
   const cur = getBus(currentBusId);
@@ -486,7 +288,6 @@ function renderAttendance() {
   document.getElementById('a-stats-served').textContent = cur ? cur.totalServed : 0;
   document.getElementById('a-stats-exceptions').textContent = (App.state.exceptions || []).length;
 
-  // ⑦ 班次排班表
   const el = document.getElementById('a-shifts');
   if (el) {
     const buses = App.state.buses;
@@ -496,52 +297,17 @@ function renderAttendance() {
       groups[key].push(b);
     });
     el.innerHTML = Object.entries(groups).map(([k, arr]) => `
-      <div style="margin-bottom: 10px;">
-        <div class="font-bold text-sm mb-2">${k}</div>
-        <div style="display:flex; flex-wrap:wrap; gap:6px;">
-          ${arr.map(b => `<span class="tag ${b.status === 'operating' ? 'tag-success' : ''}">${b.id} ${b.driver}</span>`).join('')}
+      <div style="margin-bottom:10px;">
+        <div class="font-bold text-sm mb-2" style="color:var(--ink);">${k}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${arr.map(b => `<span class="tag ${b.status === 'operating' ? 'tag-accent' : 'tag-soft'}">${b.id} ${b.driver}</span>`).join('')}
         </div>
       </div>`).join('') +
-      `<div class="text-sm text-2">高峰时段（午间放学、晚课放学）待命车辆自动热备，需求集中时调度台将提示一键增发。司机按班次交接，不跑单趟即休。</div>`;
+      `<div class="text-sm text-2">高峰时段需求集中时，调度台将提示一键增发。司机按班次交接，不跑单趟即休。</div>`;
   }
 }
 
-function renderExceptions() {
-  const exs = App.state ? (App.state.exceptions || []) : [];
-  const el = document.getElementById('ex-history');
-  if (exs.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding: 16px;">暂无记录</div>'; return; }
-  el.innerHTML = exs.map(e => `
-    <div class="list-item">
-      <span class="tag tag-${e.type === '停运' || e.type === '故障' ? 'danger' : 'warning'}">${e.type}</span>
-      <div class="li-main">
-        <div class="li-title">${e.desc || e.type}</div>
-        <div class="li-sub">${e.time}</div>
-      </div>
-    </div>`).join('');
-}
-
-async function loadFeedbacks() {
-  try {
-    const res = await fetch(API_BASE + '/api/state');
-    const data = await res.json();
-    const fbs = data.feedbacks || [];
-    const el = document.getElementById('me-feedbacks');
-    if (!el) return;
-    if (fbs.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding: 16px;">暂无反馈</div>'; return; }
-    el.innerHTML = fbs.map(f => `
-      <div style="margin-bottom: 12px; padding: 12px; background: var(--gray-50); border-radius: 6px;">
-        <div class="flex gap-2 mb-2" style="align-items: center;">
-          <span class="tag tag-${f.status === 'replied' ? 'success' : 'warning'}">${f.status === 'replied' ? '已回复' : '待处理'}</span>
-          <span class="tag">${f.type}</span>
-          <span class="text-sm text-2">${f.time}</span>
-        </div>
-        <div class="text-sm mb-2">${f.content}</div>
-        <div class="text-sm text-2 mb-2">来自: ${f.contact}</div>
-        ${f.reply ? `<div style="padding: 8px; background: #fff; border-radius: 4px; font-size: 12px; border: 1px solid var(--border);">回复: ${f.reply}</div>` : `<button class="btn btn-outline btn-sm" onclick="replyFeedback(${f.id})">回复</button>`}
-      </div>`).join('');
-  } catch (e) {}
-}
-
+// ========== 回复反馈 ==========
 function replyFeedback(id) {
   const reply = prompt('请输入回复内容：');
   if (!reply) return;
@@ -551,7 +317,80 @@ function replyFeedback(id) {
   }).then(r => r.json()).then(() => { App.toast('回复成功'); loadFeedbacks(); });
 }
 
-// 休息区选线路发车
+// ========== 我的 ==========
+function openMeFeedbacks() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">💬 反馈回复</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-me-fb"></div>`);
+  const el = document.getElementById('sheet-me-fb');
+  const fbs = (App.state && App.state.feedbacks) || [];
+  if (fbs.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无反馈</div>'; return; }
+  el.innerHTML = fbs.slice(0, 12).map(f => `
+    <div style="margin-bottom:12px;padding:12px;background:var(--surface);border-radius:16px;border:1px solid var(--line);">
+      <div class="flex gap-2 mb-2" style="align-items:center;"><span class="tag tag-${f.status === 'replied' ? 'accent' : 'soft'}">${f.status === 'replied' ? '已回复' : '待处理'}</span><span class="tag tag-soft">${f.type}</span><span class="text-sm text-2">${f.time}</span></div>
+      <div class="text-sm mb-2">${f.content}</div>
+      ${f.reply ? `<div style="padding:8px;background:#fff;border-radius:10px;font-size:12px;border:1px solid var(--line);">回复: ${f.reply}</div>` : ''}
+    </div>`).join('');
+}
+function openMeShifts() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">📊 我的班次</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-me-shifts"></div>`);
+  const el = document.getElementById('sheet-me-shifts');
+  const cur = getBus(currentBusId);
+  el.innerHTML = `
+    <div class="card" style="padding:14px;">
+      <div class="li-title">${cur ? cur.id : '#01'} · ${cur ? cur.driver : '—'}</div>
+      <div class="li-sub mt-2">绑定线路：${cur ? (routesCache.find(r => r.id === cur.routeId) || {}).name : '一线'}</div>
+      <div class="li-sub">班次：${cur ? cur.shift : '—'}</div>
+      <div class="li-sub">本月趟次：${cur ? cur.totalTrips : 0} · 圈数：${cur ? cur.lapsCompleted : 0}</div>
+    </div>`;
+}
+function openMeNotices() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🔔 消息通知</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-me-notice"></div>`);
+  const el = document.getElementById('sheet-me-notice');
+  const notices = (App.state && App.state.notices) || [];
+  if (notices.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无通知</div>'; return; }
+  el.innerHTML = notices.map(n => `
+    <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+      <div class="li-title">${n.title}</div>
+      <div class="li-sub">${n.content || ''}</div>
+      <div class="text-sm text-2 mt-2">${n.time}</div>
+    </div>`).join('');
+}
+function openMeAbout() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">ℹ️ 关于智行校园</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div style="text-align:center;padding:14px 0;">
+      <div style="font-size:34px;">🚌</div>
+      <div class="text-xl font-bold mt-2">智行校园</div>
+      <div class="text-2 text-sm mt-1">南审校园小公交 · 司机调度端</div>
+      <div class="text-2 text-sm mt-3">v1.0 · 演示版</div>
+    </div>
+    <div class="card" style="margin-top:8px;padding:14px;">
+      <div class="li-sub">实时地图 · 按需动态调度 · 拥挤度同步 · 异常申报 · 考勤统计</div>
+    </div>`);
+}
+
+// ========== 行车操作 ==========
 async function selectRoute(routeId) {
   const res = await fetch(API_BASE + '/api/bus/route', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -560,6 +399,60 @@ async function selectRoute(routeId) {
   const data = await res.json();
   if (data.success) App.toast(`✓ ${data.busId} 已从沁园休息区发车 · ${data.routeName}`);
   else App.toast('发车失败: ' + (data.error || ''));
+}
+
+function doArrive() {
+  const cur = getBus(currentBusId);
+  if (!cur || cur.status !== 'operating') { App.toast('仅运营中车辆可确认到站'); return; }
+  fetch(API_BASE + '/api/bus/arrive', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: currentBusId })
+  }).then(r => r.json()).then(d => {
+    if (d.error) App.toast('操作失败: ' + d.error);
+    else App.toast('已到站确认');
+  });
+}
+function doTempStop() {
+  fetch(API_BASE + '/api/bus/automove', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: currentBusId })
+  }).then(r => r.json()).then(d => App.toast(d.autoMove ? '已恢复自动行驶' : '已临时停靠'));
+}
+function doRecall() {
+  const cur = getBus(currentBusId);
+  if (!cur) return;
+  if (cur.status === 'operating') {
+    if (!confirm('将 ' + cur.id + ' 召回沁园休息区？')) return;
+    fetch(API_BASE + '/api/bus/recall', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ busId: currentBusId })
+    }).then(r => r.json()).then(() => App.toast(cur.id + ' 已召回休息区'));
+  } else {
+    App.toast('请用上方"沁园休息区"面板选线路发车');
+  }
+}
+function doEmergency() {
+  App.showModal(`
+    <div class="modal-title">📞 联系调度中心</div>
+    <div class="text-center" style="padding:20px;">
+      <div class="text-2xl font-bold mb-2">0511-8888-XXXX</div>
+      <div class="text-2 text-sm">南审校园公交调度中心</div>
+      <div class="text-2 text-sm mt-3">服务时间: 07:30 - 21:30</div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-block" onclick="App.closeModal()">关闭</button></div>`);
+}
+function openMoreSheet() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">更多操作</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding-top:4px;">
+      <button class="btn btn-outline btn-block" onclick="doTempStop();App.closeSheet();">临时停靠 / 恢复</button>
+      <button class="btn btn-outline btn-block" onclick="doRecall();App.closeSheet();">召回休息区</button>
+      <button class="btn btn-block" onclick="doEmergency();App.closeSheet();">紧急联系调度</button>
+    </div>`);
 }
 
 function bindActions() {
@@ -572,49 +465,8 @@ function bindActions() {
     });
   });
 
-  document.getElementById('btn-status').addEventListener('click', () => {
-    const cur = getBus(currentBusId);
-    if (!cur) return;
-    if (cur.status === 'operating') {
-      if (!confirm('将 ' + cur.id + ' 召回沁园休息区？')) return;
-      fetch(API_BASE + '/api/bus/recall', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ busId: currentBusId })
-      }).then(r => r.json()).then(() => App.toast(cur.id + ' 已召回休息区'));
-    } else {
-      App.toast('请用上方"沁园休息区"面板选线路发车');
-    }
-  });
-
-  document.getElementById('btn-temp-stop').addEventListener('click', () => {
-    fetch(API_BASE + '/api/bus/automove', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ busId: currentBusId })
-    }).then(r => r.json()).then(d => App.toast(d.autoMove ? '已恢复自动行驶' : '已临时停靠'));
-  });
-
-  document.getElementById('btn-arrive').addEventListener('click', () => {
-    fetch(API_BASE + '/api/bus/arrive', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ busId: currentBusId })
-    }).then(r => r.json()).then(d => {
-      if (d.error) App.toast('操作失败: ' + d.error);
-      else App.toast('已到站确认');
-    });
-  });
-
-  document.getElementById('btn-exception').addEventListener('click', () => switchTab('exception'));
-
-  document.getElementById('btn-emergency').addEventListener('click', () => {
-    App.showModal(`
-      <div class="modal-title">📞 联系调度中心</div>
-      <div class="text-center" style="padding: 20px;">
-        <div class="text-2xl font-bold mb-2">0511-8888-XXXX</div>
-        <div class="text-2 text-sm">南审校园公交调度中心</div>
-        <div class="text-2 text-sm mt-3">服务时间: 07:30 - 21:30</div>
-      </div>
-      <div class="modal-actions"><button class="btn btn-block" onclick="App.closeModal()">关闭</button></div>`);
-  });
+  document.getElementById('btn-arrive').addEventListener('click', doArrive);
+  document.getElementById('btn-more').addEventListener('click', openMoreSheet);
 
   document.getElementById('btn-ex-submit').addEventListener('click', () => {
     const type = document.getElementById('ex-type').value;

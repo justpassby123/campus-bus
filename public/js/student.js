@@ -1,13 +1,11 @@
 // ============================================================
-//  student.js - 学生端逻辑 v6
-//  ① P0 双线智能选线: 学生只选 上车站+下车站, 后端推荐更快线路
-//  ② 我的等待卡(我已上车/我不等了)
+//  student.js - 学生端逻辑 v7 (v3 设计系统)
+//  功能不变：双线智能选线 / OD 上报 / 我的等待 / 失物 / 反馈
 // ============================================================
 let stopsCache = [];
 let routesCache = [];
-let currentRouteId = 1;
 let currentTab = 'home';
-const CAP = 25; // 与后端 CAPACITY 保持一致 (核定载客量)
+const CAP = 25; // 与后端 CAPACITY 一致
 let myReports = JSON.parse(localStorage.getItem('student-reports') || '[]');
 let myWaits = JSON.parse(localStorage.getItem('my-waits') || '[]');
 
@@ -27,20 +25,18 @@ function showApiSettings() {
       <button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button>
     </div>`);
 }
-
 function saveApiSettings() {
   const v = document.getElementById('api-url-input').value.trim();
   if (v) localStorage.setItem('cb-api-base', v);
   else localStorage.removeItem('cb-api-base');
   location.reload();
 }
-
 function updateApiStatus(ok) {
   const el = document.getElementById('s-api-status');
   if (!el) return;
   const base = API_BASE || location.origin;
   el.textContent = ok ? `已连接 ${base}` : `未连接 ${base}`;
-  el.style.color = ok ? '#16A34A' : '#E2566B';
+  el.style.color = ok ? '#2E9E6B' : '#C77B62';
 }
 
 async function init() {
@@ -73,23 +69,12 @@ async function init() {
   document.querySelectorAll('.tab-item').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
-  document.getElementById('search-input').addEventListener('input', (e) => searchStops(e.target.value));
-  document.querySelectorAll('.route-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      currentRouteId = parseInt(b.dataset.route);
-      document.querySelectorAll('.route-btn').forEach(x => {
-        x.className = x.dataset.route == currentRouteId ? 'btn route-btn active' : 'btn btn-outline route-btn';
-      });
-      renderRouteDetail();
-    });
-  });
-  document.getElementById('btn-fb-submit').addEventListener('click', submitFeedback);
+  document.getElementById('btn-fb-submit') && document.getElementById('btn-fb-submit').addEventListener('click', submitFeedback);
 
   loadNotices();
   loadLostFound();
-  loadMyReports();
-  showHotStops();
   renderMyWaits();
+  loadServiceCounts();
 
   setInterval(async () => {
     try { await App.fetchState(); renderAll(); } catch (e) {}
@@ -101,65 +86,41 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
   document.getElementById('tab-' + tab).classList.remove('hidden');
-  if (tab === 'route') renderRouteDetail();
-  if (tab === 'service') loadLostFound();
+  if (tab === 'service') loadServiceCounts();
   if (tab === 'notice') loadNotices();
-  if (tab === 'me') { loadMyReports(); renderFleetInfo(); }
+  if (tab === 'me') { loadMyReports(); }
 }
 
 function renderAll() {
   const s = App.state;
   if (!s) return;
 
-  document.getElementById('header-period').textContent = App.periodText(s.timePeriod) + '时段';
-
-  const peakBanner = document.getElementById('s-peak-banner');
-  if (s.peak && s.peak.active) {
-    peakBanner.classList.remove('hidden');
-    document.getElementById('s-peak-text').textContent =
-      s.peak.manual ? '演示高峰模式：待命车辆已热备，候车时间可能延长'
-        : (s.peak.label + '，候车时间可能延长');
+  // 最近班车浮卡
+  const ops = s.buses ? s.buses.filter(b => b.status === 'operating') : [];
+  const tEl = document.getElementById('s-nearest-title');
+  const subEl = document.getElementById('s-nearest-sub');
+  const tagEl = document.getElementById('s-nearest-tag');
+  if (ops.length > 0) {
+    const b = ops[0];
+    const route = routesCache.find(r => r.id === b.routeId);
+    tEl.textContent = '最近班车 ' + b.id;
+    subEl.textContent = (route ? route.name : '') + ' · 当前 ' + (b.currentStopName || '—');
+    tagEl.style.display = '';
+    tagEl.innerHTML = '<span class="dot"></span>运营中 ' + ops.length + ' 辆';
   } else {
-    peakBanner.classList.add('hidden');
+    tEl.textContent = '暂无运营车';
+    subEl.textContent = '校内车辆休息中，请稍后再试';
+    tagEl.style.display = 'none';
   }
 
-  const fleet = s.fleet || { operating: 0, resting: 0, total: 9, daily: 8 };
-  const resting = fleet.resting || 0;
-  document.getElementById('s-fleet-sub').textContent =
-    `运营 ${fleet.operating} 辆 · 待命 ${resting} 辆 · 共 ${fleet.daily} 辆日常车`;
-  document.getElementById('s-bus-count').textContent = (s.buses ? s.buses.filter(b => b.status === 'operating').length : 0) + ' 辆';
-
   // 地图
-  const ops = s.buses ? s.buses.filter(b => b.status === 'operating') : [];
   const restingBuses = s.buses ? s.buses.filter(b => b.status !== 'operating') : [];
   MapView.render('map-student', s.stops, ops, { restArea: s.restArea, restingBuses, routes: routesCache });
 
-  renderBusList(ops);
-  renderTopNotices();
   renderMyWaits();
 }
 
-function renderBusList(ops) {
-  const el = document.getElementById('s-bus-list');
-  if (!ops || ops.length === 0) {
-    el.innerHTML = '<div class="text-2 text-center" style="padding: 12px;">当前无运营车辆</div>';
-    return;
-  }
-  el.innerHTML = ops.map(b => {
-    const route = routesCache.find(r => r.id === b.routeId);
-    const crowd = { empty: ['🟢', '空载'], medium: ['🟡', '适中'], crowded: ['🔴', '拥挤'] }[b.crowd] || ['⚪', ''];
-    return `
-      <div class="list-item">
-        <div style="width: 32px; height: 32px; border-radius: 50%; background: #1F2937; color:#fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">${b.id.replace('#', '')}</div>
-        <div class="li-main">
-          <div class="li-title">${b.id} · ${route ? route.name : ''} · ${crowd[1]}</div>
-          <div class="li-sub">${b.currentStopName} → ${b.nextStopName} · ${b.speed} km/h</div>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-// ========== ② 我的等待卡 ==========
+// ========== 我的等待 ==========
 function renderMyWaits() {
   const el = document.getElementById('s-my-waits');
   if (!el) return;
@@ -180,32 +141,32 @@ function renderMyWaits() {
     const etaText = busId ? `最近 ${busId} 约 ${eta} 分钟到站` : '暂无该线运营车，请耐心等待';
     if (w.overflowTip) {
       return `
-      <div class="list-item">
-        <div style="width: 34px; height: 34px; border-radius: 50%; background: #D97706; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">!</div>
-        <div class="li-main">
-          <div class="li-title">${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-warning">满载滞留</span></div>
-          <div class="li-sub" style="color:#D97706">${w.overflowTip}</div>
+      <div class="card" style="padding:14px;">
+        <div class="li-title" style="display:flex;align-items:center;gap:8px;">
+          <span style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">!</span>
+          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-danger">满载滞留</span>
         </div>
-      </div>
-      <div class="grid-2" style="gap:8px; margin: 4px 0 10px;">
-        <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 我已上车</button>
-        <button class="btn btn-sm btn-outline" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+        <div class="li-sub" style="margin-top:6px;color:var(--accent-deep);">${w.overflowTip}</div>
+        <div class="grid-2" style="gap:8px;margin-top:10px;">
+          <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 我已上车</button>
+          <button class="btn btn-outline btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+        </div>
       </div>`;
     }
     return `
-      <div class="list-item">
-        <div style="width: 34px; height: 34px; border-radius: 50%; background: #2563EB; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:12px;">${w.routeId === 1 ? '一' : '二'}</div>
-        <div class="li-main">
-          <div class="li-title">${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-danger">该线 ${cnt} 人</span></div>
-          <div class="li-sub">${etaText}</div>
+      <div class="card" style="padding:14px;">
+        <div class="li-title" style="display:flex;align-items:center;gap:8px;">
+          <span style="width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${w.routeId === 1 ? '一' : '二'}</span>
+          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-accent">该线 ${cnt} 人</span>
         </div>
-      </div>
-      <div class="grid-2" style="gap:8px; margin: 4px 0 10px;">
-        <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 我已上车</button>
-        <button class="btn btn-sm btn-outline" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+        <div class="li-sub" style="margin-top:6px;">${etaText}</div>
+        <div class="grid-2" style="gap:8px;margin-top:10px;">
+          <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 我已上车</button>
+          <button class="btn btn-outline btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+        </div>
       </div>`;
   }).join('');
-  el.innerHTML = `<div class="card"><div class="card-title">🎫 我的等待</div>${rows}</div>`;
+  el.innerHTML = `<div class="text-sm font-bold mb-2" style="color:var(--ink);">🎫 我的等待</div>${rows}`;
 }
 
 async function resolveWait(stopId, routeId, reason) {
@@ -221,12 +182,10 @@ async function resolveWait(stopId, routeId, reason) {
   App.toast(reason === 'board' ? '祝你乘车愉快 🚌' : '已取消等待');
 }
 
-// 司机到站接客 → 若命中我的等待, 自动提醒并核销
 function handleDemandResolved(d) {
   const idx = myWaits.findIndex(w => w.stopId === d.stopId && w.routeId === d.routeId);
   if (idx >= 0) {
     if (d.overflow) {
-      // 本班满载没接走: 保留等待卡, 提示下一班
       const nextTxt = d.nextBusId
         ? `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
         : `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，请等下一班`;
@@ -245,61 +204,47 @@ function handleDemandResolved(d) {
   }
 }
 
-function renderTopNotices() {
-  const el = document.getElementById('s-notice-top');
-  if (!App.state || !App.state.notices) { el.innerHTML = ''; return; }
-  const top = App.state.notices.filter(n => n.type === 'top').slice(0, 1);
-  if (top.length === 0) { el.innerHTML = ''; return; }
-  el.innerHTML = top.map(n => `
-    <div class="card" style="background: #FEF3C7; border-color: #FCD34D;">
-      <div class="flex gap-2" style="align-items: center;">
-        <span style="font-size: 18px;">📢</span>
-        <div class="flex-1">
-          <div class="font-bold">${n.title}</div>
-          <div class="text-sm text-2 mt-2">${n.content || ''}</div>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
-function searchStops(q) {
-  const el = document.getElementById('search-results');
-  if (!q || !q.trim()) { showHotStops(); return; }
-  const ql = q.trim().toLowerCase();
-  const matched = stopsCache.filter(s => s.name.toLowerCase().includes(ql));
-  if (matched.length === 0) {
-    el.innerHTML = '<div class="text-2 text-sm" style="padding: 8px;">无匹配站点</div>';
-    return;
-  }
-  el.innerHTML = matched.map(s => stopRow(s)).join('');
-}
-
-function showHotStops() {
-  const el = document.getElementById('search-results');
-  if (!stopsCache || stopsCache.length === 0) {
-    el.innerHTML = '<div class="text-2 text-sm" style="padding: 8px;">加载中...</div>';
-    return;
-  }
+// ========== 我要乘车（选上车站） ==========
+function openRideModal() {
   const hot = [3, 15, 9, 12, 2, 8];
-  el.innerHTML = '<div class="font-bold mb-2">热门站点</div>' + hot.map(id => {
+  const html = hot.map(id => {
     const s = stopsCache.find(x => x.id === id);
     return s ? stopRow(s) : '';
   }).join('');
+  App.showModal(`
+    <div class="modal-title">🚌 我要乘车</div>
+    <div class="text-sm text-2 mb-2">选择上车站，系统将为你推荐更快线路</div>
+    <input class="input" id="ride-search" placeholder="搜索站点，如：中和楼、沁园" style="margin-bottom:10px;" />
+    <div id="ride-results">${html}</div>
+    <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
+  const input = document.getElementById('ride-search');
+  input.addEventListener('input', (e) => rideSearch(e.target.value));
 }
-
+function rideSearch(q) {
+  const el = document.getElementById('ride-results');
+  if (!q || !q.trim()) {
+    const hot = [3, 15, 9, 12, 2, 8];
+    el.innerHTML = hot.map(id => { const s = stopsCache.find(x => x.id === id); return s ? stopRow(s) : ''; }).join('');
+    return;
+  }
+  const ql = q.trim().toLowerCase();
+  const matched = stopsCache.filter(s => s.name.toLowerCase().includes(ql));
+  if (matched.length === 0) { el.innerHTML = '<div class="text-2 text-sm" style="padding:8px;">无匹配站点</div>'; return; }
+  el.innerHTML = matched.map(s => stopRow(s)).join('');
+}
 function stopRow(s) {
   return `
-    <div class="list-item" onclick="reportDemand(${s.id})" style="cursor: pointer;">
-      <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--gray-100); color: var(--text); display: flex; align-items: center; justify-content: center; font-size: 16px;">站</div>
+    <div class="list-item" onclick="reportDemand(${s.id})" style="cursor:pointer;">
+      <div style="width:34px;height:34px;border-radius:50%;background:var(--surface);color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:15px;border:1px solid var(--line);">站</div>
       <div class="li-main">
         <div class="li-title">${s.name}</div>
-        <div class="li-sub">点此上报等车</div>
+        <div class="li-sub">点此上车并选目的地</div>
       </div>
-      <span class="li-action">上报 ›</span>
+      <span class="li-action">上车 ›</span>
     </div>`;
 }
 
-// ① P0: 上报 — 学生只选 上车站 + 下车站, 系统自动推荐更快线路 (v8 OD 模型)
+// ① 上报 — 选目的地，后端推荐更快线路 (v8 OD)
 function reportDemand(stopId) {
   const s = stopsCache.find(x => x.id === stopId);
   if (!s) return;
@@ -313,8 +258,6 @@ function reportDemand(stopId) {
     <div style="max-height:52vh; overflow-y:auto;">${html}</div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
-
-// 选完目的地 → 调后端推荐
 async function chooseDest(fromId, toId) {
   App.closeModal();
   App.toast('正在对比线路...', 600);
@@ -328,11 +271,9 @@ async function chooseDest(fromId, toId) {
     showRouteSuggest(fromId, toId, data);
   } catch (e) {
     if (e.name === 'AbortError') App.toast('请求超时(5s)，后端未响应', 3000);
-    else App.toast('网络错误 → 打开"我的"→"修改服务器地址"', 3500);
+    else App.toast('网络错误 → 打开"我的"→"服务器设置"', 3500);
   }
 }
-
-// 展示两线对比卡片 + 推荐高亮
 function showRouteSuggest(fromId, toId, data) {
   const fromName = stopsCache.find(s => s.id === fromId).name;
   const toName = stopsCache.find(s => s.id === toId).name;
@@ -345,7 +286,7 @@ function showRouteSuggest(fromId, toId, data) {
       const rec = l.routeId === data.recommend;
       const fullTag = l.full ? `<span class="tag tag-danger">满载 ${l.onboard}/${CAP}</span>` : '';
       return `
-        <button class="btn btn-block" style="margin:6px 0; text-align:left; padding:14px; ${rec ? 'border:2px solid var(--accent); background:var(--accent-light);' : 'border:1px solid var(--gray-200);'}" onclick="doReport(${fromId}, ${l.routeId}, ${toId})">
+        <button class="btn btn-block" style="margin:6px 0; text-align:left; padding:14px; ${rec ? 'border:2px solid var(--accent); background:var(--accent-soft); color:var(--ink);' : 'border:1px solid var(--line);'}" onclick="doReport(${fromId}, ${l.routeId}, ${toId})">
           <div style="display:flex; align-items:center; justify-content:space-between;">
             <b>${l.routeName}</b>
             ${rec ? '<span class="tag tag-accent">推荐</span>' : ''}
@@ -360,7 +301,6 @@ function showRouteSuggest(fromId, toId, data) {
     ${cards}
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
-
 async function doReport(stopId, routeId, destStopId) {
   App.closeModal();
   App.toast('上报中...', 800);
@@ -368,10 +308,8 @@ async function doReport(stopId, routeId, destStopId) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(API_BASE + '/api/demand', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stopId, routeId, destStopId }),
-      signal: controller.signal
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stopId, routeId, destStopId }), signal: controller.signal
     });
     clearTimeout(timeout);
     const data = await res.json();
@@ -389,58 +327,88 @@ async function doReport(stopId, routeId, destStopId) {
     }
   } catch (e) {
     if (e.name === 'AbortError') App.toast('请求超时(5s)，后端未响应', 3000);
-    else App.toast('网络错误 → 打开"我的"→"修改服务器地址"', 3500);
+    else App.toast('网络错误 → 打开"我的"→"服务器设置"', 3500);
   }
 }
 
-function renderRouteDetail() {
-  if (!routesCache.length || !stopsCache.length) return;
-  const route = routesCache.find(r => r.id === currentRouteId) || routesCache[0];
-  document.getElementById('rt-current').textContent = `${route.name} · 共 ${route.stopIds.length - 1} 站 · 点击站点上报本线等车`;
-
+// ========== 线路详情（抽屉） ==========
+function openRouteSheet(routeId) {
+  const route = routesCache.find(r => r.id === routeId);
+  if (!route) return;
   const stopMap = {};
   if (App.state && App.state.stops) App.state.stops.forEach(s => { stopMap[s.id] = s; });
-
-  document.getElementById('rt-stops-list').innerHTML = route.stopIds.map((id, idx) => {
+  const rows = route.stopIds.map((id, idx) => {
     const stop = stopsCache.find(x => x.id === id);
     if (!stop) return '';
     const d = stopMap[id];
-    const waitCount = d ? (currentRouteId === 1 ? d.wait1 : d.wait2) : 0;
+    const waitCount = d ? (routeId === 1 ? d.wait1 : d.wait2) : 0;
     return `
-      <div class="list-item" onclick="reportDemand(${id})" style="cursor: pointer;">
-        <div style="width: 30px; height: 30px; border-radius: 50%; background: ${waitCount > 0 ? '#E2566B' : '#F3F4F6'}; color: ${waitCount > 0 ? '#fff' : '#6B7280'}; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">${idx + 1}</div>
+      <div class="list-item" onclick="reportDemand(${id})" style="cursor:pointer;">
+        <div style="width:30px;height:30px;border-radius:50%;background:${waitCount > 0 ? 'var(--accent)' : 'var(--surface)'};color:${waitCount > 0 ? '#fff' : 'var(--ink-soft)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;border:1px solid var(--line);">${idx + 1}</div>
         <div class="li-main">
-          <div class="li-title">${stop.name}${waitCount > 0 ? ` <span class="tag tag-danger">${waitCount}人</span>` : ''}</div>
-          <div class="li-sub">${idx === route.stopIds.length - 1 ? '返回中和楼 (闭环)' : '点击选择目的地并上报' + route.name + '等车'}</div>
+          <div class="li-title">${stop.name}${waitCount > 0 ? ` <span class="tag tag-accent">${waitCount}人</span>` : ''}</div>
+          <div class="li-sub">${idx === route.stopIds.length - 1 ? '返回起点 (闭环)' : '点击上车并选目的地'}</div>
         </div>
         <span class="li-action">+</span>
       </div>`;
   }).join('');
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">${route.name} · 环线站点</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div class="text-sm text-2 mb-2">共 ${route.stopIds.length - 1} 站 · 首 08:00 / 末 21:30 · 间隔 10 分钟</div>
+    ${rows}
+    <div class="hint">点站点即可上报等车</div>`);
 }
 
-async function loadLostFound() {
+// ========== 服务：失物 / 反馈 / 预测 / 我的上报 ==========
+async function loadServiceCounts() {
+  try {
+    const res = await fetch(API_BASE + '/api/state');
+    const data = await res.json();
+    const lf = (data.lostFound || []).length;
+    const cntEl = document.getElementById('lf-count');
+    const subEl = document.getElementById('lf-sub');
+    if (cntEl) cntEl.textContent = lf + ' 件';
+    if (subEl) subEl.textContent = lf > 0 ? `${lf} 件物品待认领` : '暂无拾获';
+  } catch (e) {}
+}
+
+function openServiceLostFound() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🔍 失物招领</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-lf"></div>
+    <button class="btn btn-block mt-3" onclick="showLostFoundForm()">+ 发布失物 / 拾物</button>`);
+  loadLostFound('sheet-lf');
+}
+async function loadLostFound(targetId = 'sheet-lf') {
   try {
     const res = await fetch(API_BASE + '/api/state');
     const data = await res.json();
     const list = data.lostFound || [];
-    document.getElementById('lf-count').textContent = list.length + ' 条';
-    const el = document.getElementById('lf-list');
-    if (list.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding: 16px;">暂无失物招领信息</div>'; return; }
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    if (list.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无失物招领信息</div>'; return; }
     el.innerHTML = list.map(item => `
       <div class="list-item">
-        <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--gray-100); display: flex; align-items: center; justify-content: center; font-size: 16px;">${item.type === '校园卡' ? '🪪' : item.type === '手机' ? '📱' : '🎒'}</div>
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:16px;border:1px solid var(--line);">${item.type === '校园卡' ? '🪪' : item.type === '手机' ? '📱' : '🎒'}</div>
         <div class="li-main">
           <div class="li-title">${item.type} <span class="tag tag-accent">${item.status === 'open' ? '待认领' : '已认领'}</span></div>
           <div class="li-sub">${item.desc}</div>
-          <div class="text-sm text-2" style="margin-top: 2px;">📞 ${item.contact} · ${item.time}</div>
+          <div class="text-sm text-2" style="margin-top:2px;">📞 ${item.contact} · ${item.time}</div>
         </div>
       </div>`).join('');
   } catch (e) {}
 }
-
 function showLostFoundForm() {
   App.showModal(`
-    <div class="modal-title">发布失物/拾物</div>
+    <div class="modal-title">发布失物 / 拾物</div>
     <div class="form-group"><label class="form-label">物品类型</label>
       <select class="select" id="lf-type"><option>校园卡</option><option>手机</option><option>钱包</option><option>钥匙</option><option>其他</option></select>
     </div>
@@ -448,7 +416,6 @@ function showLostFoundForm() {
     <div class="form-group"><label class="form-label">联系方式</label><input class="input" id="lf-contact" placeholder="手机号/微信" /></div>
     <div class="modal-actions"><button class="btn btn-block" onclick="submitLostFound()">发布</button><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }
-
 async function submitLostFound() {
   const type = document.getElementById('lf-type').value;
   const desc = document.getElementById('lf-desc').value.trim();
@@ -461,12 +428,31 @@ async function submitLostFound() {
     });
     App.closeModal();
     App.toast('发布成功');
-    loadLostFound();
-  } catch (e) {
-    App.toast('发布失败');
-  }
+    loadLostFound('sheet-lf');
+    loadServiceCounts();
+  } catch (e) { App.toast('发布失败'); }
 }
 
+function openServiceFeedback() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🛠 意见反馈</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div class="form-group"><label class="form-label">问题类型</label>
+      <select class="select" id="fb-type">
+        <option value="晚点">车辆晚点</option>
+        <option value="卫生">车内卫生</option>
+        <option value="设施">站点设施损坏</option>
+        <option value="服务">服务态度</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">问题描述</label><textarea class="textarea" id="fb-content" placeholder="请详细描述问题..."></textarea></div>
+    <div class="form-group"><label class="form-label">联系方式 (可选)</label><input class="input" id="fb-contact" placeholder="手机号/学号" /></div>
+    <button class="btn btn-block" onclick="submitFeedback()">提交反馈</button>`);
+}
 async function submitFeedback() {
   const type = document.getElementById('fb-type').value;
   const content = document.getElementById('fb-content').value.trim();
@@ -481,57 +467,158 @@ async function submitFeedback() {
     if (data.success) {
       myReports.unshift(data.feedback);
       localStorage.setItem('student-reports', JSON.stringify(myReports));
+      App.closeSheet();
       App.toast('提交成功');
-      document.getElementById('fb-content').value = '';
-      document.getElementById('fb-contact').value = '';
       loadMyReports();
     }
-  } catch (e) {
-    App.toast('提交失败');
-  }
+  } catch (e) { App.toast('提交失败'); }
 }
 
-function loadMyReports() {
-  const el = document.getElementById('me-fb-history');
-  if (!el) return;
-  if (myReports.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding: 12px;">暂无反馈</div>'; return; }
-  el.innerHTML = myReports.slice(0, 5).map(f => `
-    <div style="padding: 8px 0; border-bottom: 1px solid var(--gray-100);">
-      <div class="flex gap-2" style="align-items: center;">
-        <span class="tag tag-${f.status === 'replied' ? 'success' : 'warning'}">${f.status === 'replied' ? '已回复' : '待处理'}</span>
-        <span class="text-sm text-2">${f.type}</span>
-      </div>
-      <div class="text-sm mt-2">${f.content}</div>
-      ${f.reply ? `<div class="text-sm text-accent" style="margin-top:4px;">司机回复: ${f.reply}</div>` : ''}
-      <div class="text-sm text-2 mt-2">${f.time}</div>
-    </div>`).join('');
-}
-
-function renderFleetInfo() {
+function openServiceForecast() {
   const s = App.state;
-  const el = document.getElementById('me-fleet');
-  if (!s || !s.fleet) { el.innerHTML = '加载中...'; return; }
-  const f = s.fleet;
-  el.innerHTML = `共 ${f.total} 辆车 (日常 ${f.daily} 辆 + 备班 ${f.backup} 辆)，当前运营 <b>${f.operating}</b> 辆 (一线 ${f.line1Operating} + 二线 ${f.line2Operating})。全程约 ${f.loopMinutes} 分钟。`;
+  let w1 = 0, w2 = 0;
+  if (s && s.stops) {
+    s.stops.forEach(st => { w1 += (st.wait1 || 0); w2 += (st.wait2 || 0); });
+  }
+  const total = w1 + w2;
+  const note = total === 0
+    ? '当前各站暂无候车，出行顺畅 🚌'
+    : (total >= 15 ? '未来 30 分钟候车较集中，建议错峰或就近乘车' : '未来 30 分钟总体平稳，可正常出行');
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">📈 出行预测</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div class="stat-row" style="margin-top:6px;">
+      <div class="stat"><div class="stat-n">${w1}</div><div class="stat-l">一线候车</div></div>
+      <div class="stat"><div class="stat-n">${w2}</div><div class="stat-l">二线候车</div></div>
+      <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">合计</div></div>
+    </div>
+    <div class="card" style="margin-top:14px;padding:14px;">
+      <div class="li-title">未来 30 分钟</div>
+      <div class="li-sub" style="margin-top:6px;">${note}</div>
+    </div>
+    <div class="hint">数据来自各站实时候车人数，随运行动态更新</div>`);
 }
 
+function openServiceMyReports() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🕒 我的上报</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-myreports"></div>`);
+  const el = document.getElementById('sheet-myreports');
+  if (myWaits.length === 0 && myReports.length === 0) {
+    el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无上报记录</div>'; return;
+  }
+  let html = '';
+  if (myWaits.length) {
+    html += '<div class="text-sm font-bold mb-2" style="color:var(--ink);">等待中</div>';
+    html += myWaits.map(w => `<div class="list-item"><div class="li-main"><div class="li-title">${w.stopName} → ${w.destStopName || '—'} · ${w.routeName}</div><div class="li-sub">报站等待中</div></div></div>`).join('');
+  }
+  if (myReports.length) {
+    html += '<div class="text-sm font-bold mb-2 mt-3" style="color:var(--ink);">反馈记录</div>';
+    html += myReports.slice(0, 8).map(f => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--line);">
+        <div class="flex gap-2" style="align-items:center;"><span class="tag tag-${f.status === 'replied' ? 'accent' : 'soft'}">${f.status === 'replied' ? '已回复' : '待处理'}</span><span class="text-sm text-2">${f.type}</span></div>
+        <div class="text-sm mt-2">${f.content}</div>
+        ${f.reply ? `<div class="text-sm text-accent" style="margin-top:4px;">司机回复: ${f.reply}</div>` : ''}
+      </div>`).join('');
+  }
+  el.innerHTML = html;
+}
+
+// ========== 公告 / 我的 ==========
 async function loadNotices() {
   try {
     const res = await fetch(API_BASE + '/api/state');
     const data = await res.json();
     const notices = data.notices || [];
     const el = document.getElementById('nt-list');
-    if (notices.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding: 16px;">暂无公告</div>'; return; }
+    if (notices.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无公告</div>'; return; }
     el.innerHTML = notices.map(n => `
-      <div style="padding: 12px 0; border-bottom: 1px solid var(--gray-100);">
-        <div class="flex gap-2 mb-2" style="align-items: center;">
-          ${n.type === 'top' ? '<span class="tag tag-danger">置顶</span>' : '<span class="tag">普通</span>'}
-          <span class="font-bold text-sm">${n.title}</span>
+      <div style="padding:14px 0;border-bottom:1px solid var(--line);">
+        <div class="flex gap-2 mb-2" style="align-items:center;">
+          ${n.type === 'top' ? '<span class="tag tag-danger">置顶</span>' : '<span class="tag tag-soft">普通</span>'}
+          <span class="font-bold text-sm" style="color:var(--ink);">${n.title}</span>
         </div>
         <div class="text-sm text-2">${n.content || ''}</div>
         <div class="text-sm text-2 mt-2">${n.time}</div>
       </div>`).join('');
   } catch (e) {}
+}
+function loadMyReports() { /* 反馈记录现于抽屉展示，保留以便扩展 */ }
+
+function openMeWaits() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🚌 我的报站</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-mewaits"></div>`);
+  const el = document.getElementById('sheet-mewaits');
+  if (myWaits.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无报站</div>'; return; }
+  el.innerHTML = myWaits.map(w => `
+    <div class="list-item">
+      <div style="width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${w.routeId === 1 ? '一' : '二'}</div>
+      <div class="li-main"><div class="li-title">${w.stopName} → ${w.destStopName || '—'}</div><div class="li-sub">${w.routeName} · 等待中</div></div>
+    </div>`).join('');
+}
+function openMeFeedback() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">💬 我的反馈</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-mefb"></div>`);
+  const el = document.getElementById('sheet-mefb');
+  if (myReports.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无反馈</div>'; return; }
+  el.innerHTML = myReports.slice(0, 10).map(f => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--line);">
+      <div class="flex gap-2" style="align-items:center;"><span class="tag tag-${f.status === 'replied' ? 'accent' : 'soft'}">${f.status === 'replied' ? '已回复' : '待处理'}</span><span class="text-sm text-2">${f.type}</span><span class="text-sm text-2">${f.time}</span></div>
+      <div class="text-sm mt-2">${f.content}</div>
+      ${f.reply ? `<div class="text-sm text-accent" style="margin-top:4px;">司机回复: ${f.reply}</div>` : ''}
+    </div>`).join('');
+}
+function openMeNotices() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">🔔 消息通知</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div id="sheet-menotice"></div>`);
+  const el = document.getElementById('sheet-menotice');
+  const notices = (App.state && App.state.notices) || [];
+  if (notices.length === 0) { el.innerHTML = '<div class="text-2 text-center" style="padding:16px;">暂无通知</div>'; return; }
+  el.innerHTML = notices.map(n => `
+    <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+      <div class="li-title">${n.title}</div>
+      <div class="li-sub">${n.content || ''}</div>
+      <div class="text-sm text-2 mt-2">${n.time}</div>
+    </div>`).join('');
+}
+function openMeAbout() {
+  App.showSheet(`
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">ℹ️ 关于智行校园</div>
+      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
+    </div>
+    <div style="text-align:center;padding:14px 0;">
+      <div style="font-size:34px;">🚌</div>
+      <div class="text-xl font-bold mt-2">智行校园</div>
+      <div class="text-2 text-sm mt-1">南审校园小公交 · 实时调度系统</div>
+      <div class="text-2 text-sm mt-3">v1.0 · 演示版</div>
+    </div>
+    <div class="card" style="margin-top:8px;padding:14px;">
+      <div class="li-sub">实时地图 · 双线智能选线 · 按需动态调度 · 高峰/平峰/夜间模式 · 拥挤度同步 · 公告/反馈/失物招领</div>
+    </div>`);
 }
 
 init();

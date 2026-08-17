@@ -786,13 +786,14 @@ app.get('/api/route/suggest', (req, res) => {
   if (!from || !to || !stopById[from] || !stopById[to]) return res.status(400).json({ error: '无效站点' });
   if (from === to) return res.status(400).json({ error: '上车站与下车站不能相同' });
 
-  // 环线: 从 from 正向(可绕圈)走到 to 的途经站数
+  // 环线: 从 from 正向(单圈内, 不绕整圈)走到 to 的途经站数
+  // 仅统计"当前站之后的后续站点", 需绕整圈才能到达的视为不可直达(目的地无效)
   function loopStopCount(route, fromId, toId) {
     const ids = route.stopIds;
     const start = ids.indexOf(fromId);
     if (start === -1) return null;
-    for (let i = 1; i <= ids.length; i++) {
-      if (ids[(start + i) % ids.length] === toId) return i; // 含下车站, 不含上车站
+    for (let i = start + 1; i < ids.length; i++) {
+      if (ids[i] === toId) return i - start; // 含下车站, 不含上车站
     }
     return null;
   }

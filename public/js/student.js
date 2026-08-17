@@ -355,17 +355,36 @@ function stopRow(s) {
     </div>`;
 }
 
+// 判断 toId 是否在某条线路 fromId 的"正向后续站点"中 (单圈, 不绕整圈)
+function isForwardReachable(route, fromId, toId) {
+  const ids = route.stopIds;
+  const start = ids.indexOf(fromId);
+  if (start === -1) return false;
+  for (let i = start + 1; i < ids.length; i++) if (ids[i] === toId) return true;
+  return false;
+}
+
 // ① 上报 — 选目的地，后端推荐更快线路 (v8 OD)
 function reportDemand(stopId) {
   const s = stopsCache.find(x => x.id === stopId);
   if (!s) return;
-  const others = stopsCache.filter(x => x.id !== stopId);
-  const html = others.map(d =>
-    `<button class="btn btn-outline btn-block" style="margin:4px 0; text-align:left; padding:12px;" onclick="chooseDest(${stopId}, ${d.id})">${d.name}</button>`
-  ).join('');
+  // 仅展示在任一线路上"正向后续可达"的目的地 (无效/反向站点不出现在列表)
+  const hasRoutes = routesCache.length > 0;
+  const others = stopsCache.filter(x => x.id !== stopId && (!hasRoutes || [1, 2].some(rid => {
+    const r = routesCache.find(rr => rr.id === rid);
+    return r && isForwardReachable(r, stopId, x.id);
+  })));
+  let html;
+  if (others.length === 0) {
+    html = '<div class="text-2" style="padding:12px 0;">当前站点暂无正向可达的目的地，请选择其他上车站。</div>';
+  } else {
+    html = others.map(d =>
+      `<button class="btn btn-outline btn-block" style="margin:4px 0; text-align:left; padding:12px;" onclick="chooseDest(${stopId}, ${d.id})">${d.name}</button>`
+    ).join('');
+  }
   App.showModal(`
     <div class="modal-title">${s.name} · 你要去哪站？</div>
-    <div class="text-sm text-2 mb-2">选择目的地，系统自动对比一线 / 二线并参考车辆载客情况</div>
+    <div class="text-sm text-2 mb-2">仅显示本线正向可达的目的地（已过滤反向 / 不可直达站点）</div>
     <div style="max-height:52vh; overflow-y:auto;">${html}</div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" onclick="App.closeModal()">取消</button></div>`);
 }

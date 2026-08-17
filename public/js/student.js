@@ -185,6 +185,7 @@ function renderAll() {
   MapView.render('map-student', s.stops, ops, { restArea: s.restArea, restingBuses, routes: routesCache });
 
   renderMyWaits();
+  renderRouteTab();
 }
 
 // ========== 我的等待 ==========
@@ -470,37 +471,65 @@ async function doReport(stopId, routeId, destStopId) {
   }
 }
 
-// ========== 线路详情（抽屉） ==========
-function openRouteSheet(routeId) {
-  const route = routesCache.find(r => r.id === routeId);
-  if (!route) return;
+// ========== 线路 tab：可视化候车图（内联，不弹窗） ==========
+function waitLevel(n) { return n <= 0 ? '' : n <= 3 ? 'low' : n <= 6 ? 'mid' : 'hot'; }
+
+function renderRouteTab() {
+  const el = document.getElementById('route-view');
+  if (!el || !routesCache.length) return;
+  const s = App.state;
   const stopMap = {};
-  if (App.state && App.state.stops) App.state.stops.forEach(s => { stopMap[s.id] = s; });
-  const rows = route.stopIds.map((id, idx) => {
-    const stop = stopsCache.find(x => x.id === id);
-    if (!stop) return '';
-    const d = stopMap[id];
-    const waitCount = d ? (routeId === 1 ? d.wait1 : d.wait2) : 0;
+  if (s && s.stops) s.stops.forEach(x => { stopMap[x.id] = x; });
+  const opsByRoute = {};
+  if (s && s.buses) s.buses.filter(b => b.status === 'operating').forEach(b => { opsByRoute[b.routeId] = (opsByRoute[b.routeId] || 0) + 1; });
+
+  el.innerHTML = routesCache.map(route => {
+    const isLine1 = route.id === 1;
+    let total = 0, busiest = { name: '—', n: 0 };
+    const seen = new Set();
+    const stationIds = route.stopIds.filter(id => { if (seen.has(id)) return false; seen.add(id); return true; });
+    const nodes = stationIds.map((id, idx) => {
+      const stop = stopsCache.find(x => x.id === id);
+      if (!stop) return '';
+      const d = stopMap[id];
+      const wc = d ? (isLine1 ? (d.wait1 || 0) : (d.wait2 || 0)) : 0;
+      total += wc;
+      if (wc > busiest.n) busiest = { name: stop.name, n: wc };
+      const lvl = waitLevel(wc);
+      const isLast = idx === stationIds.length - 1;
+      return `
+        <div class="rv-node ${lvl}">
+          <div class="rv-dot">${idx + 1}</div>
+          <div class="rv-info">
+            <div class="rv-name">${stop.name}${isLast ? ' <span class="rv-loop">↺ 闭环</span>' : ''}</div>
+            <div class="rv-wait">${wc > 0 ? wc + ' 人候车' : '空闲'}</div>
+          </div>
+          <div class="rv-chip">${wc > 0 ? wc + '人' : '—'}</div>
+        </div>`;
+    }).join('');
+    const ops = opsByRoute[route.id] || 0;
     return `
-      <div class="list-item" onclick="reportDemand(${id})" style="cursor:pointer;">
-        <div style="width:30px;height:30px;border-radius:50%;background:${waitCount > 0 ? 'var(--accent)' : 'var(--surface)'};color:${waitCount > 0 ? '#fff' : 'var(--ink-soft)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;border:1px solid var(--line);">${idx + 1}</div>
-        <div class="li-main">
-          <div class="li-title">${stop.name}${waitCount > 0 ? ` <span class="tag tag-accent">${waitCount}人</span>` : ''}</div>
-          <div class="li-sub">${idx === route.stopIds.length - 1 ? '返回起点 (闭环)' : '点击上车并选目的地'}</div>
+      <div class="rv-card">
+        <div class="rv-head">
+          <div class="rv-bus">🚌</div>
+          <div>
+            <div class="rv-title">${route.name}</div>
+            <div class="rv-meta">首 08:00 / 末 21:30 · 间隔 10 分</div>
+          </div>
         </div>
-        <span class="li-action">+</span>
+        <div class="rv-stats">
+          <div class="rv-stat"><b>${total}</b><span>本线候车</span></div>
+          <div class="rv-stat"><b class="rv-busy">${busiest.name}</b><span>最忙站点</span></div>
+          <div class="rv-stat"><b>${ops}</b><span>运营中</span></div>
+        </div>
+        <div class="rv-chain">${nodes}</div>
+        <button class="btn btn-primary btn-block" onclick="goRide()">🚌 我要乘车</button>
       </div>`;
   }).join('');
-  App.showSheet(`
-    <div class="sheet-grab"></div>
-    <div class="sheet-head">
-      <div class="sheet-title">${route.name} · 环线站点</div>
-      <button class="sheet-close" onclick="App.closeSheet()">✕</button>
-    </div>
-    <div class="text-sm text-2 mb-2">共 ${route.stopIds.length - 1} 站 · 首 08:00 / 末 21:30 · 间隔 10 分钟</div>
-    ${rows}
-    <div class="hint">点站点即可上报等车</div>`);
 }
+
+// 跳转首页并打开『我要乘车』上报（避免线路 tab 重复弹窗）
+function goRide() { switchTab('home'); openRideModal(); }
 
 // ========== 服务：失物 / 反馈 / 预测 / 我的上报 ==========
 async function loadServiceCounts() {

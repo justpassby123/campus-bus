@@ -50,33 +50,10 @@
         <div id="s-my-waits" style="margin-top:16px;"></div>
       </div>
 
-      <!-- ========== TAB 2: 线路（两张大卡片） ========== -->
+      <!-- ========== TAB 2: 线路（可视化候车图，内联渲染） ========== -->
       <div id="tab-route" class="tab-pane hidden">
-        <div class="route-card" onclick="openRouteSheet(1)">
-          <div class="rc-top">
-            <div class="rc-bus">🚌</div>
-            <div>
-              <div class="rc-name">一线 · 环线</div>
-              <div class="rc-desc">沁园 → 中和楼 → 南门北 ··· 16 站</div>
-            </div>
-          </div>
-          <div class="rc-line"></div>
-          <div class="rc-foot"><span>首 08:00 / 末 21:30</span><span class="rc-go">查看站点 ›</span></div>
-        </div>
-
-        <div class="route-card" onclick="openRouteSheet(2)">
-          <div class="rc-top">
-            <div class="rc-bus">🚌</div>
-            <div>
-              <div class="rc-name">二线 · 环线</div>
-              <div class="rc-desc">沁园 → 竞秀楼 → 润园 ··· 16 站</div>
-            </div>
-          </div>
-          <div class="rc-line" style="background:#C9C9C9;"></div>
-          <div class="rc-foot"><span>首 08:00 / 末 21:30</span><span class="rc-go">查看站点 ›</span></div>
-        </div>
-
-        <div class="hint">间隔 10 分钟 · 全程约 25 分钟 · 点卡片看各站实时候车</div>
+        <div id="route-view"></div>
+        <div class="hint">间隔 10 分钟 · 全程约 25 分钟 · 各站实时候车一目了然</div>
       </div>
 
       <!-- ========== TAB 3: 服务 ========== -->

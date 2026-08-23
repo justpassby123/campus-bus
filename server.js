@@ -303,30 +303,30 @@ function seedDemoData() {
   // 预置候车需求 (按线路二维, 带随机目的地)
   // 设计目标: 评委点开即见"全校 16 站均有候车", 一/二线皆有分布, 数量呈真实梯度
   const seedDemands = [
-    { stopId: 1,  routeId: 1, count: 5, minAgo: 7 },
-    { stopId: 1,  routeId: 2, count: 4, minAgo: 6 },
-    { stopId: 2,  routeId: 1, count: 6, minAgo: 5 },
-    { stopId: 3,  routeId: 1, count: 5, minAgo: 4 },
-    { stopId: 3,  routeId: 2, count: 4, minAgo: 3 },
-    { stopId: 4,  routeId: 1, count: 3, minAgo: 2 },
-    { stopId: 5,  routeId: 1, count: 2, minAgo: 3 },
-    { stopId: 5,  routeId: 2, count: 2, minAgo: 4 },
-    { stopId: 6,  routeId: 1, count: 4, minAgo: 5 },
-    { stopId: 7,  routeId: 2, count: 3, minAgo: 4 },
-    { stopId: 8,  routeId: 1, count: 3, minAgo: 2 },
-    { stopId: 8,  routeId: 2, count: 2, minAgo: 3 },
-    { stopId: 9,  routeId: 1, count: 5, minAgo: 3 },
-    { stopId: 9,  routeId: 2, count: 4, minAgo: 2 },
-    { stopId: 10, routeId: 2, count: 3, minAgo: 4 },
-    { stopId: 11, routeId: 1, count: 6, minAgo: 6 },
-    { stopId: 11, routeId: 2, count: 5, minAgo: 5 },
-    { stopId: 12, routeId: 1, count: 4, minAgo: 3 },
-    { stopId: 12, routeId: 2, count: 3, minAgo: 4 },
-    { stopId: 13, routeId: 2, count: 4, minAgo: 5 },
-    { stopId: 14, routeId: 2, count: 3, minAgo: 3 },
-    { stopId: 15, routeId: 2, count: 5, minAgo: 5 },
-    { stopId: 15, routeId: 1, count: 3, minAgo: 4 },
-    { stopId: 16, routeId: 1, count: 3, minAgo: 4 }
+    { stopId: 1,  routeId: 1, count: 3, minAgo: 7 },
+    { stopId: 1,  routeId: 2, count: 2, minAgo: 6 },
+    { stopId: 2,  routeId: 1, count: 3, minAgo: 5 },
+    { stopId: 3,  routeId: 1, count: 3, minAgo: 4 },
+    { stopId: 3,  routeId: 2, count: 2, minAgo: 3 },
+    { stopId: 4,  routeId: 1, count: 2, minAgo: 2 },
+    { stopId: 5,  routeId: 1, count: 1, minAgo: 3 },
+    { stopId: 5,  routeId: 2, count: 1, minAgo: 4 },
+    { stopId: 6,  routeId: 1, count: 2, minAgo: 5 },
+    { stopId: 7,  routeId: 2, count: 2, minAgo: 4 },
+    { stopId: 8,  routeId: 1, count: 2, minAgo: 2 },
+    { stopId: 8,  routeId: 2, count: 1, minAgo: 3 },
+    { stopId: 9,  routeId: 1, count: 3, minAgo: 3 },
+    { stopId: 9,  routeId: 2, count: 2, minAgo: 2 },
+    { stopId: 10, routeId: 2, count: 2, minAgo: 4 },
+    { stopId: 11, routeId: 1, count: 3, minAgo: 6 },
+    { stopId: 11, routeId: 2, count: 3, minAgo: 5 },
+    { stopId: 12, routeId: 1, count: 2, minAgo: 3 },
+    { stopId: 12, routeId: 2, count: 2, minAgo: 4 },
+    { stopId: 13, routeId: 2, count: 2, minAgo: 5 },
+    { stopId: 14, routeId: 2, count: 2, minAgo: 3 },
+    { stopId: 15, routeId: 2, count: 3, minAgo: 5 },
+    { stopId: 15, routeId: 1, count: 2, minAgo: 4 },
+    { stopId: 16, routeId: 1, count: 2, minAgo: 4 }
   ];
   seedDemands.forEach(({ stopId, routeId, count, minAgo }) => {
     const d = ensureDemand(stopId, routeId);
@@ -355,31 +355,31 @@ function seedDemoData() {
   // v8: 预置溢出样本 (竹苑/中和楼/竞秀楼高峰满载)
   state.overflowStats = { '11_1': 4, '2_1': 3, '15_2': 2 };
 
-  // 预置车队载客情形多样化 (演示多种情形):
-  //   #01(一线·沁园→中和楼) 适中 14/25, 下站(中和楼)下 4 人 → 演示"适中"+下车动态
-  //   #02(一线·泽园南→竹苑) 空载  6/25, 下站(竹苑)下 2 人   → 演示"空载"
-  //   #04(二线·沁园→中和楼) 满载 25/25, 下站(中和楼)下 3 人 → 演示"满载预警"+拥挤
-  //   #05(二线·泽园餐厅→澄园一站) 拥挤 17/25, 下站(澄园一站)下 5 人 → 演示"拥挤"
-  //   → 四种拥挤态(空载/适中/拥挤/满载)齐全, 且每车下站均有乘客下车, 体现"上下车"动态
+  // 预置车队载客情形多样化 (演示多种情形, 故意不设"满载"起步, 避免一开服就全满):
+  //   #01(一线·沁园→中和楼) 适中 9/25, 下站(中和楼)下 3 人 → 演示"适中"+下车动态
+  //   #02(一线·泽园南→竹苑) 空载 4/25, 下站(竹苑)下 2 人   → 演示"空载"
+  //   #04(二线·沁园→中和楼) 拥挤 18/25, 下站(中和楼)下 3 人 → 演示"拥挤"(非满载, 满载仅在自然累加时偶发)
+  //   #05(二线·泽园餐厅→澄园一站) 适中 11/25, 下站(澄园一站)下 3 人 → 演示"适中"
+  //   → 空载/适中/拥挤 三态齐全, 且每车下站均有乘客下车, 体现"上下车"动态; 满载(25)不再预置
   if (busById['#01']) {
-    busById['#01'].onboard = 14;
-    busById['#01'].passengers = { 2: 4, 9: 5, 12: 3, 16: 2 };   // 中和楼4 / 泽园餐厅5 / 润园3 / 南门南2
-    busById['#01'].crowd = autoCrowd(14);
+    busById['#01'].onboard = 9;
+    busById['#01'].passengers = { 2: 3, 9: 3, 12: 2, 16: 1 };   // 中和楼3 / 泽园餐厅3 / 润园2 / 南门南1
+    busById['#01'].crowd = autoCrowd(9);
   }
   if (busById['#02']) {
-    busById['#02'].onboard = 6;
-    busById['#02'].passengers = { 11: 2, 12: 2, 13: 2 };        // 竹苑2 / 润园2 / 润园餐厅2
-    busById['#02'].crowd = autoCrowd(6);
+    busById['#02'].onboard = 4;
+    busById['#02'].passengers = { 11: 2, 12: 1, 13: 1 };        // 竹苑2 / 润园1 / 润园餐厅1
+    busById['#02'].crowd = autoCrowd(4);
   }
   if (busById['#04']) {
-    busById['#04'].onboard = 25;                                // 满载 (25/25) → 演示"满载预警"
-    busById['#04'].passengers = { 2: 3, 9: 10, 12: 8, 13: 4 }; // 中和楼3 / 泽园餐厅10 / 润园8 / 润园餐厅4
-    busById['#04'].crowd = autoCrowd(25);
+    busById['#04'].onboard = 18;                                // 拥挤 (18/25), 非满载
+    busById['#04'].passengers = { 2: 3, 9: 7, 12: 5, 13: 3 }; // 中和楼3 / 泽园餐厅7 / 润园5 / 润园餐厅3
+    busById['#04'].crowd = autoCrowd(18);
   }
   if (busById['#05']) {
-    busById['#05'].onboard = 17;                                // 拥挤 (17/25)
-    busById['#05'].passengers = { 8: 5, 7: 4, 6: 3, 5: 3, 4: 2 }; // 澄园一站5 / 澄园北4 / 澄园南3 / 敏达楼3 / 敏行楼2
-    busById['#05'].crowd = autoCrowd(17);
+    busById['#05'].onboard = 11;                                // 适中 (11/25)
+    busById['#05'].passengers = { 8: 3, 7: 3, 6: 2, 5: 2, 4: 1 }; // 澄园一站3 / 澄园北3 / 澄园南2 / 敏达楼2 / 敏行楼1
+    busById['#05'].crowd = autoCrowd(11);
   }
 }
 

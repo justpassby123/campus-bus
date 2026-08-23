@@ -13,9 +13,11 @@
   --ink-soft:     #6B6B6B;   /* 次级文字 */
   --muted:        #A6A6A6;   /* 三级 / 提示 */
   --line:         #EDEDED;   /* 描边 */
-  --accent:       #C77B62;   /* 赤陶 · 唯一彩色点缀 */
-  --accent-deep:  #A85F49;   /* 赤陶深（按下/hover） */
-  --accent-soft:  #F4E7E1;   /* 赤陶浅染 */
+  --accent:       #1A7CC0;   /* 品牌深蓝 · 图标底部色（替代赤陶） */
+  --accent-deep:  #0F5F95;   /* 蓝深 · 按下/hover */
+  --accent-soft:  #E2F4F1;   /* 薄荷浅染 · 背景/标签 */
+  --brand-start:  #3DDFC9;   /* 品牌薄荷绿 · 图标顶部色 */
+  --brand-grad:   linear-gradient(135deg, #3DDFC9 0%, #1A7CC0 100%);
 
   /* —— 圆角 —— */
   --r-card: 20px;
@@ -144,13 +146,13 @@ input, textarea, select { font-family: inherit; outline: none; }
   border-radius: var(--r-btn);
   font-size: 14px;
   font-weight: 600;
-  background: var(--accent);
+  background: var(--brand-grad);
   color: #fff;
   cursor: pointer;
   transition: all 0.15s;
   text-decoration: none;
 }
-.btn:hover { background: var(--accent-deep); }
+.btn:hover { background: var(--accent); }
 .btn:active { transform: scale(0.97); }
 .btn-block { width: 100%; }
 .btn-lg { padding: 15px 20px; font-size: 16px; font-weight: 700; }
@@ -171,6 +173,75 @@ input, textarea, select { font-family: inherit; outline: none; }
 .btn-danger { background: var(--accent); color:#fff; }
 .btn-danger:hover { background: var(--accent-deep); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 司机端：确认满载按钮（仅满载时出现） */
+.cf-row { margin-top: 12px; }
+.cf-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: var(--r-btn);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  letter-spacing: 0.5px;
+}
+.cf-btn:hover { background: var(--accent-soft); transform: translateY(-1px); }
+.cf-btn:active { transform: scale(0.98); }
+.cf-btn .cf-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 900;
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+.cf-btn.is-confirmed {
+  background: var(--brand-grad);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(26,124,192,.28);
+}
+.cf-btn.is-confirmed .cf-ic {
+  background: rgba(255,255,255,.25);
+  color: #fff;
+}
+
+/* 调度页车队卡片里的迷你确认满载按钮 */
+.cf-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  transition: all 0.15s;
+}
+.cf-mini:hover { background: var(--accent-soft); }
+.cf-mini.is-confirmed {
+  background: var(--brand-grad);
+  color: #fff;
+  border-color: transparent;
+}
 
 /* 大主行动按钮（地图下方的“我要乘车”） */
 .bigbtn {
@@ -619,9 +690,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 .rv-node.mid .rv-dot { background:var(--accent-deep); border-color:var(--accent-deep); color:#fff; }
 .rv-node.mid .rv-wait { color:var(--accent-deep); font-weight:700; }
 .rv-node.mid .rv-chip { background:var(--accent-deep); color:#fff; }
-.rv-node.hot .rv-dot { background:var(--accent-deep); border-color:var(--accent-deep); color:#fff; box-shadow:0 0 0 4px rgba(199,123,98,.22); }
+.rv-node.hot .rv-dot { background:var(--accent-deep); border-color:var(--accent-deep); color:#fff; box-shadow:0 0 0 4px rgba(26,124,192,.22); }
 .rv-node.hot .rv-wait { color:var(--accent-deep); font-weight:700; }
-.rv-node.hot .rv-chip { background:var(--accent-deep); color:#fff; box-shadow:0 0 0 4px rgba(199,123,98,.22); }
+.rv-node.hot .rv-chip { background:var(--accent-deep); color:#fff; box-shadow:0 0 0 4px rgba(26,124,192,.22); }
 
 /* ============================================================
    线路 tab · 入口卡片（点进去看独立详情页）

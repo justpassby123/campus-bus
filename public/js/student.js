@@ -101,7 +101,7 @@ function updateApiStatus(ok) {
   if (!el) return;
   const base = API_BASE || location.origin;
   el.textContent = ok ? `已连接 ${base}` : `未连接 ${base}`;
-  el.style.color = ok ? '#2E9E6B' : '#C77B62';
+  el.style.color = ok ? '#16A085' : '#1A7CC0';
 }
 
 async function init() {

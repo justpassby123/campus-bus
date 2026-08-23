@@ -161,7 +161,8 @@ function makeBus(def) {
       currentStopName: REST_AREA.name,
       nextStopName: '待派车',
       crowd: 'empty', autoMove: false, speed: 0, dwell: 0,
-      onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0
+      onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0,
+      driverConfirmedFull: false
     };
   }
   // 运营中: 在路线上的指定位置起步
@@ -173,8 +174,9 @@ function makeBus(def) {
     lat: startStop.lat, lng: startStop.lng,
     currentStopName: startStop.name,
     nextStopName: stopById[route.stopIds[(def.startIdx + 1) % route.stopIds.length]].name,
-    crowd: 'empty', autoMove: true, speed: 0, dwell: 0,
-    onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0
+crowd: 'empty', autoMove: true, speed: 0, dwell: 0,
+      onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0,
+      driverConfirmedFull: false
   };
 }
 const buses = fleetDef.map(makeBus);
@@ -491,7 +493,7 @@ function serveStop(bus, stopId) {
     });
   }
 
-  bus.crowd = autoCrowd(bus.onboard);
+  bus.crowd = bus.driverConfirmedFull ? 'crowded' : autoCrowd(bus.onboard);
   return served;
 }
 
@@ -768,7 +770,7 @@ app.post('/api/demand', (req, res) => {
   const eta = target ? target.eta : 0;
   const busId = target ? target.nearestBusId : null;
   const nbBus = busId ? busById[busId] : null;
-  const full = !!(nbBus && nbBus.onboard >= CAPACITY);
+  const full = !!(nbBus && (nbBus.onboard >= CAPACITY || nbBus.driverConfirmedFull));
   io.emit('demand:new', {
     stopId: id, stopName: stopById[id].name,
     routeId, routeName: routeById[routeId].name,
@@ -818,7 +820,7 @@ app.get('/api/route/suggest', (req, res) => {
       eta = nb ? Math.max(1, Math.round(distance / 20 * 60)) : 0;
       nearestBusId = nb ? nb.bus.id : null;
       const bus = nearestBusId ? busById[nearestBusId] : null;
-      full = !!(bus && bus.onboard >= CAPACITY);
+      full = !!(bus && (bus.onboard >= CAPACITY || bus.driverConfirmedFull));
       onboard = bus ? bus.onboard : 0;
     }
     return { routeId, routeName: route.name, reachable, stopCount: stopCount || 0, eta, nearestBusId, full, onboard };
@@ -872,7 +874,7 @@ app.post('/api/bus/arrive', (req, res) => {
   bus.currentStopName = nxt.name;
   bus.dwell = DWELL_TICKS;
   serveStop(bus, nextId);
-  if (nextId === 1) { bus.lapsCompleted++; bus.onboard = 0; bus.passengers = {}; bus.crowd = 'empty'; }
+  if (nextId === 1) { bus.lapsCompleted++; bus.onboard = 0; bus.passengers = {}; bus.crowd = 'empty'; bus.driverConfirmedFull = false; }
   bus.nextStopName = stopById[route.stopIds[(bus.currentStopIdx + 1) % route.stopIds.length]].name;
   broadcastState();
   res.json({ success: true });
@@ -900,6 +902,7 @@ app.post('/api/bus/route', (req, res) => {
   bus.currentStopName = startStop.name;
   bus.nextStopName = stopById[route.stopIds[1]].name;
   bus.crowd = 'empty';
+  bus.driverConfirmedFull = false;
   bus.onboard = 0;
   bus.passengers = {};
   broadcastState();
@@ -920,6 +923,7 @@ app.post('/api/bus/recall', (req, res) => {
   bus.currentStopName = REST_AREA.name;
   bus.nextStopName = '待派车';
   bus.crowd = 'empty';
+  bus.driverConfirmedFull = false;
   bus.onboard = 0;
   bus.passengers = {};
   broadcastState();
@@ -936,6 +940,17 @@ app.post('/api/bus/crowd', (req, res) => {
   bus.crowd = crowd;
   broadcastState();
   res.json({ success: true, crowd });
+});
+
+// 司机确认满载 (人数与实际有偏差时, 司机手动锁定满载状态, 同步给所有人)
+app.post('/api/bus/confirm-full', (req, res) => {
+  const { busId, confirmed } = req.body || {};
+  const bus = busById[busId];
+  if (!bus) return res.status(404).json({ error: '车辆不存在' });
+  bus.driverConfirmedFull = !!confirmed;
+  bus.crowd = bus.driverConfirmedFull ? 'crowded' : autoCrowd(bus.onboard);
+  broadcastState();
+  res.json({ success: true, busId, driverConfirmedFull: bus.driverConfirmedFull });
 });
 
 // 自动行驶开关
@@ -1010,6 +1025,7 @@ app.post('/api/clear', (req, res) => {
     b.onboard = 0;
     b.passengers = {};
     b.crowd = 'empty';
+    b.driverConfirmedFull = false;
   });
   state.exceptions = [];
   broadcastState();

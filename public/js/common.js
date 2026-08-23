@@ -197,8 +197,8 @@ window.MapView = {
       const [x, y] = toXY(s.lat, s.lng);
       const wait = s.waitCount || 0;
       const hasWait = wait > 0;
-      const ring = hasWait ? '#C77B62' : '#1A1A1A';
-      const fill = hasWait ? '#C77B62' : '#fff';
+      const ring = hasWait ? '#1A7CC0' : '#1A1A1A';
+      const fill = hasWait ? '#1A7CC0' : '#fff';
       const stroke = '#fff';
       const r = hasWait ? 9 : 7;
       svg += `<g>
@@ -248,7 +248,7 @@ window.MapView = {
     // ⑦ 指北针 (简化版, 赤陶指针)
     svg += `<g transform="translate(${W-26}, 22)">
       <circle r="11" fill="#fff" stroke="#EDEDED" stroke-width="1" opacity="0.95"/>
-      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#C77B62"/>
+      <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#1A7CC0"/>
       <text x="0" y="-12" text-anchor="middle" font-size="8" fill="#6B7280" font-weight="600">N</text>
     </g>`;
 

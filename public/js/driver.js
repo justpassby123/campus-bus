@@ -33,7 +33,7 @@ function updateApiStatus(ok) {
   if (!el) return;
   const base = API_BASE || location.origin;
   el.textContent = ok ? `已连接 ${base}` : `未连接 ${base}`;
-  el.style.color = ok ? '#2E9E6B' : '#C77B62';
+  el.style.color = ok ? '#16A085' : '#1A7CC0';
 }
 
 async function init() {
@@ -118,6 +118,31 @@ function renderAll() {
   const onboard = cur.onboard || 0;
   document.getElementById('d-load-text').textContent = `${onboard} / ${cap} 人`;
   document.getElementById('d-load-bar').style.width = Math.min(100, (onboard / cap) * 100) + '%';
+
+  // 确认满载按钮（仅当显示满载/拥挤时出现，可手动锁定状态同步给所有端）
+  const cfRow = document.getElementById('cf-row');
+  const cfBtn = document.getElementById('btn-confirm-full');
+  if (cfRow && cfBtn) {
+    const isFull = cur.status === 'operating' && (
+      cur.driverConfirmedFull || onboard >= cap || cur.crowd === 'crowded'
+    );
+    if (isFull) {
+      cfRow.classList.remove('hidden');
+      const ic = cfBtn.querySelector('.cf-ic');
+      const tx = cfBtn.querySelector('.cf-tx');
+      if (cur.driverConfirmedFull) {
+        cfBtn.classList.add('is-confirmed');
+        ic.textContent = '✓';
+        tx.textContent = '已确认满载 · 点击取消';
+      } else {
+        cfBtn.classList.remove('is-confirmed');
+        ic.textContent = '+';
+        tx.textContent = '确认满载';
+      }
+    } else {
+      cfRow.classList.add('hidden');
+    }
+  }
 
   // 下一站
   document.getElementById('d-next-name').textContent = cur.nextStopName || '—';
@@ -240,9 +265,13 @@ function renderFleetGrid(gridId) {
       ? `<div class="bus-load"><i style="width:${pct}%;background:${crowdColor};"></i></div>
          <div class="bus-load-tx" style="color:${crowdColor};">载客 ${onboard}/${cap} · ${App.crowdText(b.crowd)}</div>`
       : `<div class="bus-load-tx text-2">未运营</div>`;
+    const isFull = b.driverConfirmedFull || (b.onboard || 0) >= cap || b.crowd === 'crowded';
+    const cfMini = isOp && isFull
+      ? `<button class="cf-mini ${b.driverConfirmedFull ? 'is-confirmed' : ''}" onclick="event.stopPropagation();confirmBusFull('${b.id}')">${b.driverConfirmedFull ? '✓ 已满' : '确认满载'}</button>`
+      : '';
     const action = isRest
       ? `<div class="bus-actions"><button class="btn btn-sm" onclick="event.stopPropagation();dispatchBus('${b.id}',1)">派一线</button><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();dispatchBus('${b.id}',2)">派二线</button></div>`
-      : `<div class="bus-actions"><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();recallBus('${b.id}')">召回</button></div>`;
+      : `<div class="bus-actions">${cfMini}<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();recallBus('${b.id}')">召回</button></div>`;
     return `
       <div class="bus-card ${statusClass} ${sel}" onclick="selectBus('${b.id}')">
         <div class="bus-head"><span class="bus-id">${b.id}</span><span class="bus-status">${App.statusText(b.status)}</span></div>
@@ -265,13 +294,29 @@ function quickDispatch(id, routeId) {
   dispatchBus(id, routeId);
 }
 function recallBus(id) {
-  if (!confirm('将 ' + id + ' 召回沁园休息区？')) return;
+  if (!confirm('将 ' + id + '召回沁园休息区？')) return;
   fetch(API_BASE + '/api/bus/recall', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ busId: id })
   }).then(r => r.json()).then(d => {
     App.toast(d.success ? id + ' 已召回休息区' : '召回失败: ' + (d.error || ''));
   });
+}
+
+// 司机手动确认/取消满载（人数与实际不符时手动锁定，同步给所有端）
+function confirmBusFull(busId) {
+  if (!busId) { App.toast('未选中车辆'); return; }
+  const bus = App.state && App.state.buses ? App.state.buses.find(b => b.id === busId) : null;
+  if (!bus) return;
+  const next = !bus.driverConfirmedFull;
+  fetch(API_BASE + '/api/bus/confirm-full', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId, confirmed: next })
+  }).then(r => r.json()).then(d => {
+    App.toast(d.success
+      ? (next ? `${busId} 已标记满载 · 全员同步` : `${busId} 已取消满载标记`)
+      : '操作失败: ' + (d.error || ''));
+  }).catch(() => App.toast('网络错误'));
 }
 
 // ========== 异常 ==========

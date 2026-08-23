@@ -43,6 +43,13 @@
         <div class="loadwrap">
           <div class="loadhead"><span>载客情况</span><span id="d-load-text">0 / 25 人</span></div>
           <div class="loadbar"><i id="d-load-bar" style="width:0%"></i></div>
+          <!-- 司机手动确认满载（人数与实际不符时锁定状态，同步给所有端） -->
+          <div class="cf-row hidden" id="cf-row">
+            <button class="cf-btn" id="btn-confirm-full" onclick="confirmBusFull(currentBusId)">
+              <span class="cf-ic">+</span>
+              <span class="cf-tx">确认满载</span>
+            </button>
+          </div>
         </div>
 
         <!-- 下一站 -->

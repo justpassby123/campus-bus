@@ -211,7 +211,7 @@ function renderMyWaits() {
     const destTxt = w.destStopName ? ` → ${w.destStopName}` : '';
     const etaText = busId ? `最近 ${busId} 约 ${eta} 分钟到站` : '暂无该线运营车，请耐心等待';
 
-    // 状态1: 等下一班（本班满载未上车 / 主动选没上车）
+    // 状态1: 等下一班（弹窗选"没上车" / 重新留意下一班）
     if (w.waitingNext) {
       return `
       <div class="card" style="padding:14px;">
@@ -287,25 +287,17 @@ function handleDemandResolved(d) {
     if (myWaits.length === 0) stopLocationWatch();
     return;
   }
-  if (d.overflow) {
-    // 本班满载: 不归档, 标记为"等下一班", 车离站后再问是否上车
-    const nextTxt = d.nextBusId
-      ? `本班 ${d.busId} 已满载，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
-      : `本班 ${d.busId} 已满载，请等下一班`;
-    App.toast('⚠️ ' + nextTxt, 4200);
-    myWaits[idx].waitingNext = true;
-    myWaits[idx].overflowTip = nextTxt;
-    saveMyWaits();
-    renderMyWaits();
-  } else {
-    const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
-    const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
-    App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，上车${d.served}人${offTxt}${waitTxt}`, 3800);
-    // 记录"本班已靠站": 车离开站点之后再弹"是否上车", 不再车一到站就收起
-    myWaits[idx].boardPending = true;
-    saveMyWaits();
-    renderMyWaits();
-  }
+  // 车辆已到站: 无论是否满载, 上车与否一律以"离站后弹窗"的回复为准
+  // (不再以 overflow/full 判定不能上车 —— 避免"明明没满载却显示坐不了")
+  const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
+  const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
+  App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}${offTxt}${waitTxt}，离站后将确认是否上车`, 3800);
+  // 标记"本班已靠站"; 车离开站点后弹"是否上车". 清除之前的等下一班状态
+  myWaits[idx].boardPending = true;
+  myWaits[idx].waitingNext = false;
+  myWaits[idx].overflowTip = '';
+  saveMyWaits();
+  renderMyWaits();
 }
 
 // 车离站后弹"是否上车": 已上车/不答 → 默认已上车归档; 没上车 → 等下一班
@@ -467,7 +459,6 @@ function showRouteSuggest(fromId, toId, data) {
   } else {
     cards = reachables.map(l => {
       const crowdColor = l.onboard <= 7 ? 'var(--muted)' : l.onboard <= 15 ? 'var(--ink-soft)' : 'var(--accent)';
-      const fullTag = l.full ? `<span class="tag tag-danger">满载</span>` : '';
       return `
         <button class="route-opt" onclick="doReport(${fromId}, ${l.routeId}, ${toId})">
           <div class="ro-top">
@@ -475,7 +466,7 @@ function showRouteSuggest(fromId, toId, data) {
             <span class="ro-eta">最近 ${l.nearestBusId || '无车'} 约 ${l.eta} 分</span>
           </div>
           <div class="ro-sub">
-            <span style="color:${crowdColor};">载客 ${l.onboard}/${CAP}</span> · ${crowdTextFromOnboard(l.onboard)}${fullTag}
+            <span style="color:${crowdColor};">载客 ${l.onboard}/${CAP}</span> · ${crowdTextFromOnboard(l.onboard)}
           </div>
         </button>`;
     }).join('');
@@ -506,7 +497,7 @@ async function doReport(stopId, routeId, destStopId) {
       renderMyWaits();
       startLocationWatch();
       const tip = data.busId
-        ? `${data.stopName}→${data.destStopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟${data.full ? '（该班可能满载，建议留意下一班）' : ''}`
+        ? `${data.stopName}→${data.destStopName} ${data.routeName} 已上报 · 最近 ${data.busId} 约 ${data.eta} 分钟`
         : `${data.stopName}→${data.destStopName} ${data.routeName} 已上报`;
       App.toast('✓ ' + tip, 3000);
     } else {

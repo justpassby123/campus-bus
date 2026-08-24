@@ -41,8 +41,14 @@
 
         <!-- 载客情况 -->
         <div class="loadwrap">
-          <div class="loadhead"><span>载客情况</span><span id="d-load-text">0 / 25 人</span></div>
-          <div class="loadbar"><i id="d-load-bar" style="width:0%"></i></div>
+          <div class="loadhead">
+            <span>载客情况</span>
+            <span id="d-load-cap" class="load-cap">约 — 人</span>
+          </div>
+          <div class="loadbar">
+            <input type="range" id="d-load-slider" class="load-slider" min="0" max="25" value="0" step="1" />
+          </div>
+          <div class="load-hint" id="d-load-hint">拖动滑块可手动校准 · 未校准时按系统估算</div>
           <!-- 司机手动确认满载（人数与实际不符时锁定状态，同步给所有端） -->
           <div class="cf-row hidden" id="cf-row">
             <button class="cf-btn" id="btn-confirm-full" onclick="confirmBusFull(currentBusId)">

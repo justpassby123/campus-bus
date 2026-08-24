@@ -57,6 +57,12 @@ async function init() {
   App.initSocket();
   window.onStateUpdate = renderAll;
 
+  // 默认锁定 #01 为手动停留车辆（到站后等司机确认/出发）
+  fetch(API_BASE + '/api/bus/control', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: '#01' })
+  }).catch(() => {});
+
   document.querySelectorAll('.tab-item').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
@@ -83,6 +89,11 @@ function getBus(id) {
 }
 function selectBus(id) {
   currentBusId = id;
+  // 锁定当前操作的车辆为手动停留（其余车保持自动）
+  fetch(API_BASE + '/api/bus/control', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: id })
+  }).then(() => {}).catch(() => {});
   renderAll();
 }
 
@@ -113,11 +124,23 @@ function renderAll() {
   const parkedBuses = s.buses.filter(b => b.status !== 'operating');
   MapView.render('map-driver', s.stops, ops, { restArea: s.restArea, parkedBuses, routes: routesCache });
 
-  // 载客
+  // 载客（可拖动进度条：条上不显示精确人数，右上角小字标大概人数）
   const cap = s.capacity || 25;
-  const onboard = cur.onboard || 0;
-  document.getElementById('d-load-text').textContent = `${onboard} / ${cap} 人`;
-  document.getElementById('d-load-bar').style.width = Math.min(100, (onboard / cap) * 100) + '%';
+  const onboard = cur.onboard || 0;  // 服务端已算好 effectiveOnboard
+  const slider = document.getElementById('d-load-slider');
+  if (slider) {
+    slider.max = cap;
+    slider.value = onboard;
+    const pct = Math.min(100, (onboard / cap) * 100);
+    slider.style.background =
+      `linear-gradient(90deg, #3DDFC9 0%, #1A7CC0 ${pct}%, #e9eef1 ${pct}%)`;
+  }
+  const capEl = document.getElementById('d-load-cap');
+  if (capEl) capEl.textContent = `约 ${onboard} 人`;
+  const hintEl = document.getElementById('d-load-hint');
+  if (hintEl) hintEl.textContent = (cur.driverLoad != null)
+    ? '已手动校准载客（可拖动重新校准）'
+    : '拖动滑块可手动校准 · 未校准时按系统估算';
 
   // 确认满载按钮（仅当显示满载/拥挤时出现，可手动锁定状态同步给所有端）
   const cfRow = document.getElementById('cf-row');
@@ -154,9 +177,22 @@ function renderAll() {
   document.getElementById('d-next-sub').textContent =
     `当前 ${cur.currentStopName || '—'} · 下站等 ${nextWait} 人 · 预计下车 ${cur.offNext || 0} 人`;
 
-  // 确认到站
+  // 确认到站 / 出发（仅当前车在站点停留时出现）
   const btnArrive = document.getElementById('btn-arrive');
-  btnArrive.disabled = cur.status !== 'operating';
+  if (btnArrive) {
+    if (cur.waitDepart && cur.status === 'operating') {
+      btnArrive.classList.remove('hidden');
+      if (cur.driverArrived) {
+        btnArrive.textContent = '🚌 出发';
+        btnArrive.onclick = doDepart;
+      } else {
+        btnArrive.textContent = '确认到站';
+        btnArrive.onclick = doArrive;
+      }
+    } else {
+      btnArrive.classList.add('hidden');
+    }
+  }
 
   if (currentTab === 'dispatch') {
     if (dispatchPageOpen) renderDispatchDetail();
@@ -466,14 +502,34 @@ async function selectRoute(routeId) {
 
 function doArrive() {
   const cur = getBus(currentBusId);
-  if (!cur || cur.status !== 'operating') { App.toast('仅运营中车辆可确认到站'); return; }
+  if (!cur || cur.status !== 'operating') { App.toast('仅运营中车辆可操作'); return; }
+  if (!cur.waitDepart) { App.toast('车辆尚未到站'); return; }
   fetch(API_BASE + '/api/bus/arrive', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ busId: currentBusId })
   }).then(r => r.json()).then(d => {
     if (d.error) App.toast('操作失败: ' + d.error);
-    else App.toast('已到站确认');
+    else App.toast('已确认到站，可点击「出发」');
   });
+}
+function doDepart() {
+  const cur = getBus(currentBusId);
+  if (!cur || cur.status !== 'operating') { App.toast('仅运营中车辆可操作'); return; }
+  fetch(API_BASE + '/api/bus/depart', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: currentBusId })
+  }).then(r => r.json()).then(d => {
+    if (d.error) App.toast('操作失败: ' + d.error);
+    else App.toast('已出发 🚌');
+  });
+}
+function doLoad(v) {
+  const cur = getBus(currentBusId);
+  if (!cur || cur.status !== 'operating') return;
+  fetch(API_BASE + '/api/bus/load', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ busId: currentBusId, load: parseInt(v, 10) })
+  }).then(r => r.json()).catch(() => {});
 }
 function doTempStop() {
   fetch(API_BASE + '/api/bus/automove', {
@@ -528,7 +584,9 @@ function openMapZoom() {
 }
 
 function bindActions() {
-  document.getElementById('btn-arrive').addEventListener('click', doArrive);
+  // 进度条拖动 → 手动校准载客
+  const slider = document.getElementById('d-load-slider');
+  if (slider) slider.addEventListener('input', (e) => doLoad(e.target.value));
   document.getElementById('btn-more').addEventListener('click', openMoreSheet);
 
   const punch = document.getElementById('btn-punch');

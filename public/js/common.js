@@ -33,6 +33,9 @@ window.App = {
       this.socket.on('demand:resolved', (d) => {
         if (typeof window.onDemandResolved === 'function') window.onDemandResolved(d);
       });
+      this.socket.on('demand:departed', (d) => {
+        if (typeof window.onDemandDeparted === 'function') window.onDemandDeparted(d);
+      });
       this.socket.on('bus:resting', (d) => {
         this.toast(`${d.busId} 已完成 ${d.lapsCompleted} 圈，到达沁园休息区`);
       });

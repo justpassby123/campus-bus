@@ -130,6 +130,7 @@ async function init() {
   App.initSocket();
   window.onStateUpdate = renderAll;
   window.onDemandResolved = handleDemandResolved;
+  window.onDemandDeparted = handleDemandDeparted;
 
   document.querySelectorAll('.tab-item').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -210,15 +211,30 @@ function renderMyWaits() {
     const destTxt = w.destStopName ? ` → ${w.destStopName}` : '';
     const etaText = busId ? `最近 ${busId} 约 ${eta} 分钟到站` : '暂无该线运营车，请耐心等待';
 
-    // 状态1: 满载滞留
-    if (w.overflowTip) {
+    // 状态1: 等下一班（本班满载未上车 / 主动选没上车）
+    if (w.waitingNext) {
       return `
       <div class="card" style="padding:14px;">
         <div class="li-title" style="display:flex;align-items:center;gap:8px;">
-          <span style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">!</span>
-          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-danger">满载滞留</span>
+          <span style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">↻</span>
+          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-accent">等下一班</span>
         </div>
-        <div class="li-sub" style="margin-top:6px;color:var(--accent-deep);">${w.overflowTip}</div>
+        <div class="li-sub" style="margin-top:6px;color:var(--accent-deep);">${w.overflowTip || '本班未上车，已为你留意下一班'}</div>
+        <div class="grid-2" style="gap:8px;margin-top:10px;">
+          <button class="btn btn-outline btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
+        </div>
+      </div>`;
+    }
+
+    // 状态2: 本班已到站，正在离站（离站后弹"是否上车"确认）
+    if (w.boardPending) {
+      return `
+      <div class="card" style="padding:14px;border:2px solid var(--accent);">
+        <div class="li-title" style="display:flex;align-items:center;gap:8px;">
+          <span style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">✓</span>
+          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-accent">本班已到站</span>
+        </div>
+        <div class="li-sub" style="margin-top:6px;color:var(--accent-deep);">车辆离站后将确认你是否上车</div>
         <div class="grid-2" style="gap:8px;margin-top:10px;">
           <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 我已上车</button>
           <button class="btn btn-outline btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
@@ -226,23 +242,7 @@ function renderMyWaits() {
       </div>`;
     }
 
-    // 状态2: 车辆已到站（可确认上车）
-    if (w.arrived) {
-      return `
-      <div class="card" style="padding:14px;border:2px solid var(--accent);">
-        <div class="li-title" style="display:flex;align-items:center;gap:8px;">
-          <span style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">✓</span>
-          ${w.stopName}${destTxt} · ${w.routeName} <span class="tag tag-accent">已到站</span>
-        </div>
-        <div class="li-sub" style="margin-top:6px;color:var(--accent-deep);">车辆已到达，请上车后确认</div>
-        <div class="grid-2" style="gap:8px;margin-top:10px;">
-          <button class="btn btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'board')">✓ 确认上车</button>
-          <button class="btn btn-outline btn-sm" onclick="resolveWait(${w.stopId}, ${w.routeId}, 'leave')">我不等了</button>
-        </div>
-      </div>`;
-    }
-
-    // 状态3: 等待中（未到站，误点"我已上车"会被拦截）
+    // 状态3: 等待中（未到站）
     return `
       <div class="card" style="padding:14px;">
         <div class="li-title" style="display:flex;align-items:center;gap:8px;">
@@ -261,10 +261,7 @@ function renderMyWaits() {
 
 async function resolveWait(stopId, routeId, reason, msg) {
   const idx = myWaits.findIndex(w => w.stopId === stopId && w.routeId === routeId);
-  if (reason === 'board' && idx >= 0 && !myWaits[idx].arrived) {
-    App.toast('车辆尚未到达，请稍候 🚍');
-    return;
-  }
+  if (reason === 'board') { clearTimeout(boardPopupTimer); boardPopupKey = null; }
   try {
     await fetch(API_BASE + '/api/demand/cancel', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -291,10 +288,12 @@ function handleDemandResolved(d) {
     return;
   }
   if (d.overflow) {
+    // 本班满载: 不归档, 标记为"等下一班", 车离站后再问是否上车
     const nextTxt = d.nextBusId
-      ? `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
-      : `本班 ${d.busId} 已满载(下车${d.offCount||0}人/上车${d.served||0}人)，请等下一班`;
+      ? `本班 ${d.busId} 已满载，${d.nextBusId} 约 ${d.nextEta} 分钟接你`
+      : `本班 ${d.busId} 已满载，请等下一班`;
     App.toast('⚠️ ' + nextTxt, 4200);
+    myWaits[idx].waitingNext = true;
     myWaits[idx].overflowTip = nextTxt;
     saveMyWaits();
     renderMyWaits();
@@ -302,20 +301,66 @@ function handleDemandResolved(d) {
     const waitTxt = d.waitDuration ? `（你等了 ${d.waitDuration} 分钟）` : '';
     const offTxt = d.offCount ? `· 到站下车${d.offCount}人` : '';
     App.toast(`🚌 你等的 ${d.busId} 已到 ${d.stopName}，上车${d.served}人${offTxt}${waitTxt}`, 3800);
-    myWaits[idx].arrived = true;
+    // 记录"本班已靠站": 车离开站点之后再弹"是否上车", 不再车一到站就收起
+    myWaits[idx].boardPending = true;
     saveMyWaits();
     renderMyWaits();
-    // 到站后 5 秒自动归档（用户未手动确认也收起）
-    setTimeout(() => {
-      const i2 = myWaits.findIndex(w => w.stopId === d.stopId && w.routeId === d.routeId);
-      if (i2 >= 0 && myWaits[i2].arrived) {
-        myWaits.splice(i2, 1);
-        saveMyWaits();
-        renderMyWaits();
-        if (myWaits.length === 0) stopLocationWatch();
-      }
-    }, 5000);
   }
+}
+
+// 车离站后弹"是否上车": 已上车/不答 → 默认已上车归档; 没上车 → 等下一班
+let boardPopupKey = null;
+let boardPopupTimer = null;
+function handleDemandDeparted(d) {
+  const idx = myWaits.findIndex(w => w.stopId === d.stopId && w.routeId === d.routeId);
+  if (idx < 0) return;
+  const w = myWaits[idx];
+  showBoardPopup(d, w);
+}
+function showBoardPopup(d, w) {
+  const key = w.stopId + '_' + w.routeId;
+  if (boardPopupKey === key) return; // 同一等待不重复弹
+  boardPopupKey = key;
+  App.showModal(`
+    <div class="modal-title">🚌 是否上车</div>
+    <div class="text-sm mb-3">${d.busId} 已离开 <b>${d.stopName}</b>，你上车了吗？</div>
+    <div class="modal-actions">
+      <button class="btn btn-block" onclick="answerBoard(${w.stopId}, ${w.routeId})">✓ 已上车</button>
+      <button class="btn btn-outline btn-block" onclick="answerNoBoard(${w.stopId}, ${w.routeId})">没上车</button>
+    </div>
+    <div class="text-2 text-center mt-2">8 秒未操作将默认「已上车」</div>`);
+  // 未回答 → 默认已上车
+  boardPopupTimer = setTimeout(() => {
+    if (boardPopupKey === key) answerBoard(w.stopId, w.routeId, true);
+  }, 8000);
+}
+function answerBoard(stopId, routeId, auto) {
+  clearTimeout(boardPopupTimer);
+  boardPopupKey = null;
+  App.closeModal();
+  resolveWait(stopId, routeId, 'board', auto ? '已默认上车，祝旅途愉快 🚌' : '祝你乘车愉快 🚌');
+}
+function answerNoBoard(stopId, routeId) {
+  clearTimeout(boardPopupTimer);
+  boardPopupKey = null;
+  App.closeModal();
+  const idx = myWaits.findIndex(w => w.stopId === stopId && w.routeId === routeId);
+  if (idx < 0) return;
+  // 没上车 → 等下一班: 保持等待并重新上报需求, 下一班到站会继续接
+  myWaits[idx].waitingNext = true;
+  myWaits[idx].boardPending = false;
+  myWaits[idx].overflowTip = '你选择未上车，已为你留意下一班';
+  saveMyWaits();
+  renderMyWaits();
+  App.toast('已为你留意下一班 🚌', 2600);
+  reReportWait(myWaits[idx]);
+}
+function reReportWait(w) {
+  if (!w) return;
+  fetch(API_BASE + '/api/demand', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stopId: w.stopId, routeId: w.routeId, destStopId: w.destStopId || null })
+  }).then(() => {}).catch(() => {});
 }
 
 // ========== 我要乘车（选上车站） ==========
@@ -456,7 +501,7 @@ async function doReport(stopId, routeId, destStopId) {
     if (data.success) {
       myWaits = myWaits.filter(w => !(w.stopId === stopId && w.routeId === routeId));
       const stop = stopsCache.find(s => s.id === stopId);
-      myWaits.unshift({ stopId, routeId, destStopName: data.destStopName || '?', stopName: data.stopName, routeName: data.routeName, time: Date.now(), lat: stop ? stop.lat : null, lng: stop ? stop.lng : null });
+      myWaits.unshift({ stopId, routeId, destStopId: destStopId || null, destStopName: data.destStopName || '?', stopName: data.stopName, routeName: data.routeName, time: Date.now(), lat: stop ? stop.lat : null, lng: stop ? stop.lng : null });
       saveMyWaits();
       renderMyWaits();
       startLocationWatch();

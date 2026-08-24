@@ -162,7 +162,8 @@ function makeBus(def) {
       nextStopName: '待派车',
       crowd: 'empty', autoMove: false, speed: 0, dwell: 0,
       onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0,
-      driverConfirmedFull: false
+      driverConfirmedFull: false, requireDepart: false, waitDepart: false,
+      driverArrived: false, driverLoad: null
     };
   }
   // 运营中: 在路线上的指定位置起步
@@ -176,8 +177,9 @@ function makeBus(def) {
     nextStopName: stopById[route.stopIds[(def.startIdx + 1) % route.stopIds.length]].name,
 crowd: 'empty', autoMove: true, speed: 0, dwell: 0,
       onboard: 0, passengers: {}, totalServed: 0, totalTrips: 0, lapsCompleted: 0,
-      driverConfirmedFull: false
-  };
+      driverConfirmedFull: false, requireDepart: false, waitDepart: false,
+      driverArrived: false, driverLoad: null
+    };
 }
 const buses = fleetDef.map(makeBus);
 const busById = Object.fromEntries(buses.map(b => [b.id, b]));
@@ -254,6 +256,14 @@ function autoCrowd(onboard) {
   return 'crowded';
 }
 
+// 有效载客 = 司机手动校准值(driverLoad)优先, 否则用系统真实统计(onboard)
+function effectiveOnboard(bus) {
+  if (bus.driverLoad != null && !isNaN(bus.driverLoad)) {
+    return Math.max(0, Math.min(CAPACITY, bus.driverLoad));
+  }
+  return bus.onboard || 0;
+}
+
 function operatingBuses() {
   return buses.filter(b => b.status === 'operating');
 }
@@ -303,10 +313,10 @@ function seedDemoData() {
   // 预置候车需求 (按线路二维, 带随机目的地)
   // 设计目标: 评委点开即见"全校 16 站均有候车", 一/二线皆有分布, 数量呈真实梯度
   const seedDemands = [
-    { stopId: 1,  routeId: 1, count: 3, minAgo: 7 },
+    { stopId: 1,  routeId: 1, count: 2, minAgo: 7 },
     { stopId: 1,  routeId: 2, count: 2, minAgo: 6 },
-    { stopId: 2,  routeId: 1, count: 3, minAgo: 5 },
-    { stopId: 3,  routeId: 1, count: 3, minAgo: 4 },
+    { stopId: 2,  routeId: 1, count: 2, minAgo: 5 },
+    { stopId: 3,  routeId: 1, count: 2, minAgo: 4 },
     { stopId: 3,  routeId: 2, count: 2, minAgo: 3 },
     { stopId: 4,  routeId: 1, count: 2, minAgo: 2 },
     { stopId: 5,  routeId: 1, count: 1, minAgo: 3 },
@@ -315,16 +325,16 @@ function seedDemoData() {
     { stopId: 7,  routeId: 2, count: 2, minAgo: 4 },
     { stopId: 8,  routeId: 1, count: 2, minAgo: 2 },
     { stopId: 8,  routeId: 2, count: 1, minAgo: 3 },
-    { stopId: 9,  routeId: 1, count: 3, minAgo: 3 },
+    { stopId: 9,  routeId: 1, count: 2, minAgo: 3 },
     { stopId: 9,  routeId: 2, count: 2, minAgo: 2 },
     { stopId: 10, routeId: 2, count: 2, minAgo: 4 },
-    { stopId: 11, routeId: 1, count: 3, minAgo: 6 },
-    { stopId: 11, routeId: 2, count: 3, minAgo: 5 },
+    { stopId: 11, routeId: 1, count: 2, minAgo: 6 },
+    { stopId: 11, routeId: 2, count: 2, minAgo: 5 },
     { stopId: 12, routeId: 1, count: 2, minAgo: 3 },
     { stopId: 12, routeId: 2, count: 2, minAgo: 4 },
     { stopId: 13, routeId: 2, count: 2, minAgo: 5 },
     { stopId: 14, routeId: 2, count: 2, minAgo: 3 },
-    { stopId: 15, routeId: 2, count: 3, minAgo: 5 },
+    { stopId: 15, routeId: 2, count: 2, minAgo: 5 },
     { stopId: 15, routeId: 1, count: 2, minAgo: 4 },
     { stopId: 16, routeId: 1, count: 2, minAgo: 4 }
   ];
@@ -493,8 +503,23 @@ function serveStop(bus, stopId) {
     });
   }
 
-  bus.crowd = bus.driverConfirmedFull ? 'crowded' : autoCrowd(bus.onboard);
+  bus.crowd = bus.driverConfirmedFull ? 'crowded' : autoCrowd(effectiveOnboard(bus));
   return served;
+}
+
+// 车辆离站: 通知该站候车的学生端弹"是否上车" (车离开站点之后才问)
+function busLeavesStop(bus) {
+  const route = routeById[bus.routeId];
+  if (!route) return;
+  const stopId = route.stopIds[bus.currentStopIdx];
+  const st = stopById[stopId];
+  io.emit('demand:departed', {
+    stopId,
+    stopName: st ? st.name : '',
+    routeId: bus.routeId,
+    routeName: route.name,
+    busId: bus.id
+  });
 }
 
 // =========================================================
@@ -593,7 +618,9 @@ function getFullState() {
         lat: b.lat, lng: b.lng, crowd: b.crowd, speed: b.speed,
         currentStopName: b.currentStopName, nextStopName: b.nextStopName, nextStopId,
         autoMove: b.autoMove, totalServed: b.totalServed, totalTrips: b.totalTrips,
-        onboard: b.onboard, offNext, destSummary, lapsCompleted: b.lapsCompleted
+        onboard: effectiveOnboard(b), offNext, destSummary, lapsCompleted: b.lapsCompleted,
+        waitDepart: b.waitDepart, driverArrived: b.driverArrived,
+        driverLoad: b.driverLoad, requireDepart: b.requireDepart
       };
     }),
     restArea: REST_AREA,
@@ -687,7 +714,9 @@ function tickBus(bus) {
   const route = routeById[bus.routeId];
   const ids = route.stopIds;
 
-  if (bus.dwell > 0) { bus.dwell--; bus.speed = 0; return; }
+  // 手动停留: 被司机端锁定的车辆到站后停住, 等司机点"出发"才走
+  if (bus.waitDepart) { bus.speed = 0; return; }
+  if (bus.dwell > 0) { bus.dwell--; if (bus.dwell === 0) busLeavesStop(bus); bus.speed = 0; return; }
 
   const nextId = ids[(bus.currentStopIdx + 1) % ids.length];
   const nxt = stopById[nextId];
@@ -701,7 +730,10 @@ function tickBus(bus) {
     bus.lat = nxt.lat;
     bus.lng = nxt.lng;
     bus.currentStopName = nxt.name;
-    bus.dwell = DWELL_TICKS;
+    bus.driverArrived = false;
+    // 被锁定的车: 手动停留等司机确认/出发; 其余车: 定时短停后自动离站
+    if (bus.requireDepart) bus.waitDepart = true;
+    else bus.dwell = DWELL_TICKS;
     bus.speed = 0;
 
     // 下客 + 上客
@@ -713,6 +745,7 @@ function tickBus(bus) {
       bus.onboard = 0;
       bus.passengers = {};
       bus.crowd = 'empty';
+      bus.driverLoad = null;
     }
     bus.nextStopName = stopById[ids[(bus.currentStopIdx + 1) % ids.length]].name;
   } else {
@@ -770,7 +803,7 @@ app.post('/api/demand', (req, res) => {
   const eta = target ? target.eta : 0;
   const busId = target ? target.nearestBusId : null;
   const nbBus = busId ? busById[busId] : null;
-  const full = !!(nbBus && (nbBus.onboard >= CAPACITY || nbBus.driverConfirmedFull));
+  const full = !!(nbBus && (effectiveOnboard(nbBus) >= CAPACITY || nbBus.driverConfirmedFull));
   io.emit('demand:new', {
     stopId: id, stopName: stopById[id].name,
     routeId, routeName: routeById[routeId].name,
@@ -820,7 +853,7 @@ app.get('/api/route/suggest', (req, res) => {
       eta = nb ? Math.max(1, Math.round(distance / 20 * 60)) : 0;
       nearestBusId = nb ? nb.bus.id : null;
       const bus = nearestBusId ? busById[nearestBusId] : null;
-      full = !!(bus && (bus.onboard >= CAPACITY || bus.driverConfirmedFull));
+      full = !!(bus && (effectiveOnboard(bus) >= CAPACITY || bus.driverConfirmedFull));
       onboard = bus ? bus.onboard : 0;
     }
     return { routeId, routeName: route.name, reachable, stopCount: stopCount || 0, eta, nearestBusId, full, onboard };
@@ -854,30 +887,53 @@ app.post('/api/demand/cancel', (req, res) => {
   res.json({ success: true, waitCount: d ? d.count : 0 });
 });
 
-// 司机到站确认 (手动推进一站, 复用 serveStop)
+// 司机确认到站 (仅标记 driverArrived, 真正离站由 /api/bus/depart 触发)
 app.post('/api/bus/arrive', (req, res) => {
   const busId = req.body.busId || '#01';
   const bus = busById[busId];
   if (!bus) return res.status(400).json({ error: 'invalid busId' });
   if (bus.status !== 'operating') return res.status(400).json({ error: '该车未在运营中' });
-  const route = routeById[bus.routeId];
-  const nextId = route.stopIds[(bus.currentStopIdx + 1) % route.stopIds.length];
-  const nxt = stopById[nextId];
-  // 就近校验: 车辆须接近目标站才能确认到站, 否则会出现"提前通知"(圆点未到却已通知上车)
-  const distKm = haversine(bus.lat, bus.lng, nxt.lat, nxt.lng);
-  if (distKm > 0.08) {
-    return res.status(400).json({ error: `车辆尚未到达${nxt.name}，无法确认（距该站约${Math.round(distKm * 1000)}米）` });
-  }
-  bus.currentStopIdx = (bus.currentStopIdx + 1) % route.stopIds.length;
-  bus.lat = nxt.lat;
-  bus.lng = nxt.lng;
-  bus.currentStopName = nxt.name;
-  bus.dwell = DWELL_TICKS;
-  serveStop(bus, nextId);
-  if (nextId === 1) { bus.lapsCompleted++; bus.onboard = 0; bus.passengers = {}; bus.crowd = 'empty'; bus.driverConfirmedFull = false; }
-  bus.nextStopName = stopById[route.stopIds[(bus.currentStopIdx + 1) % route.stopIds.length]].name;
+  if (!bus.waitDepart) return res.status(400).json({ error: '车辆尚未到站，无法确认' });
+  bus.driverArrived = true;
   broadcastState();
   res.json({ success: true });
+});
+
+// 司机出发 (清除停留, 车辆恢复行驶, 并广播"离站"给学生端)
+app.post('/api/bus/depart', (req, res) => {
+  const busId = req.body.busId || '#01';
+  const bus = busById[busId];
+  if (!bus) return res.status(400).json({ error: 'invalid busId' });
+  if (bus.status !== 'operating') return res.status(400).json({ error: '该车未在运营中' });
+  if (!bus.waitDepart) return res.status(400).json({ error: '车辆未在站点停留' });
+  bus.waitDepart = false;
+  bus.driverArrived = false;
+  busLeavesStop(bus);
+  broadcastState();
+  res.json({ success: true });
+});
+
+// 司机端锁定当前操作的车辆: 该车到站后手动停留等确认/出发, 其余车保持自动
+app.post('/api/bus/control', (req, res) => {
+  const busId = req.body.busId;
+  if (!busId || !busById[busId]) return res.status(400).json({ error: 'invalid busId' });
+  buses.forEach(b => { b.requireDepart = (b.id === busId); });
+  broadcastState();
+  res.json({ success: true, controlledBus: busId });
+});
+
+// 司机手动校准载客 (拖动进度条覆盖系统自动统计)
+app.post('/api/bus/load', (req, res) => {
+  const busId = req.body.busId || '#01';
+  const bus = busById[busId];
+  if (!bus) return res.status(400).json({ error: 'invalid busId' });
+  let load = parseInt(req.body.load);
+  if (isNaN(load)) load = null;
+  else load = Math.max(0, Math.min(CAPACITY, load));
+  bus.driverLoad = load;
+  bus.crowd = bus.driverConfirmedFull ? 'crowded' : autoCrowd(effectiveOnboard(bus));
+  broadcastState();
+  res.json({ success: true, busId, driverLoad: load });
 });
 
 // ③ 从休息区/待命/备班 选线路发车 (调度台派车)
@@ -903,6 +959,7 @@ app.post('/api/bus/route', (req, res) => {
   bus.nextStopName = stopById[route.stopIds[1]].name;
   bus.crowd = 'empty';
   bus.driverConfirmedFull = false;
+  bus.requireDepart = false; bus.waitDepart = false; bus.driverArrived = false; bus.driverLoad = null;
   bus.onboard = 0;
   bus.passengers = {};
   broadcastState();
@@ -924,6 +981,7 @@ app.post('/api/bus/recall', (req, res) => {
   bus.nextStopName = '待派车';
   bus.crowd = 'empty';
   bus.driverConfirmedFull = false;
+  bus.requireDepart = false; bus.waitDepart = false; bus.driverArrived = false; bus.driverLoad = null;
   bus.onboard = 0;
   bus.passengers = {};
   broadcastState();
@@ -1026,6 +1084,7 @@ app.post('/api/clear', (req, res) => {
     b.passengers = {};
     b.crowd = 'empty';
     b.driverConfirmedFull = false;
+    b.requireDepart = false; b.waitDepart = false; b.driverArrived = false; b.driverLoad = null;
   });
   state.exceptions = [];
   broadcastState();

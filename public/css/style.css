@@ -291,7 +291,7 @@ input, textarea, select { font-family: inherit; outline: none; }
   background: var(--surface);
   position: relative;
 }
-.map svg { width: 100%; height: 100%; display: block; }
+.map svg { width: 100%; height: 100%; display: block; touch-action: none; -webkit-user-select: none; user-select: none; }
 
 /* 地图放大按钮（右上角浮层） */
 .map-zoom {
@@ -380,7 +380,7 @@ input, textarea, select { font-family: inherit; outline: none; }
   height: 100%;
   display: block;
 }
-.map-zoom-view svg { width: 100%; height: 100%; display: block; }
+.map-zoom-view svg { width: 100%; height: 100%; display: block; touch-action: none; -webkit-user-select: none; user-select: none; }
 .map-zoom-hint {
   position: absolute;
   bottom: 12px;
@@ -389,6 +389,22 @@ input, textarea, select { font-family: inherit; outline: none; }
   text-align: center;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* 横屏: 放大地图弹窗填满屏宽, 地图框用满容器 (避免竖屏窄条不随旋转展开) */
+@media (orientation: landscape) {
+  .map-zoom-backdrop {
+    max-width: none;
+  }
+  .map-zoom-box {
+    padding: 48px 18px 38px;
+  }
+  .map-zoom-box > div {
+    aspect-ratio: auto;
+  }
+  .map-zoom-hint {
+    font-size: 11px;
+  }
 }
 
 /* 地图浮卡（最近班车） */

@@ -164,7 +164,8 @@ window.MapView = {
 
     const ROUTE_COLORS = { 1: '#1A1A1A', 2: '#B0B0B0' };
 
-    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block; border-radius:8px;">`;
+    let svg = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block; border-radius:8px; touch-action:none; -webkit-user-select:none; user-select:none;">`;
+    svg += `<g id="mapGeo" class="map-geo">`;
 
     // ① 插画底图 (校园建筑/水域/绿地) + 柔光遮罩
     const useBaseMap = opts.useBaseMap !== false;
@@ -248,7 +249,8 @@ window.MapView = {
       svg += `<text x="${x+7.5}" y="${y+4}" text-anchor="middle" font-size="6" font-weight="700" fill="${color}">${label}</text>`;
     });
 
-    // ⑦ 指北针 (简化版, 赤陶指针)
+    svg += `</g>`; // 结束 mapGeo 可变换组
+    // ⑦ 指北针 (固定在右上角, 不随缩放/平移移动)
     svg += `<g transform="translate(${W-26}, 22)">
       <circle r="11" fill="#fff" stroke="#EDEDED" stroke-width="1" opacity="0.95"/>
       <path d="M0 -7 L3 4 L0 0 L-3 4 Z" fill="#1A7CC0"/>
@@ -257,6 +259,95 @@ window.MapView = {
 
     svg += `</svg>`;
     el.innerHTML = svg;
+    this.attachGestures(el, W, H);
+  },
+
+  // 地图手势: 双指捏合缩放 + 单指拖拽平移 + 双击/双触重置 (司机端/学生端共用)
+  // 监听器绑在容器 el 上(持久), 事件触发时再取当前 svg, 以兼容内联地图频繁重渲染
+  attachGestures(el) {
+    if (el._mapGestureBound) return;
+    el._mapGestureBound = true;
+    let scale = 1, tx = 0, ty = 0;
+    const MIN = 1, MAX = 6;
+    const applyT = () => {
+      const svg = el.querySelector('svg');
+      if (!svg) return;
+      svg.style.transformOrigin = '0 0';
+      svg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    };
+    const clampScale = (s) => Math.max(MIN, Math.min(MAX, s));
+    const toLocal = (e) => {
+      const r = el.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const midOf = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+    const pointers = new Map();
+    let lastDist = 0, lastMid = null;
+    let lastTap = 0, lastTapPos = null;
+
+    el.addEventListener('pointerdown', (e) => {
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      pointers.set(e.pointerId, toLocal(e));
+      if (pointers.size === 2) {
+        const p = [...pointers.values()];
+        lastDist = dist(p[0], p[1]);
+        lastMid = midOf(p[0], p[1]);
+      }
+      // 双击/双触重置
+      const now = Date.now();
+      const lp = toLocal(e);
+      if (lastTap && now - lastTap < 320 && lastTapPos && Math.hypot(lp.x - lastTapPos.x, lp.y - lastTapPos.y) < 36) {
+        scale = 1; tx = 0; ty = 0; applyT(); lastTap = 0; lastTapPos = null;
+      } else {
+        lastTap = now; lastTapPos = lp;
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      const prev = pointers.get(e.pointerId);
+      const cur = toLocal(e);
+      pointers.set(e.pointerId, cur);
+      if (pointers.size === 1) {
+        tx += cur.x - prev.x; ty += cur.y - prev.y; applyT();
+      } else if (pointers.size === 2) {
+        const p = [...pointers.values()];
+        const d = dist(p[0], p[1]);
+        const m = midOf(p[0], p[1]);
+        if (lastDist > 0) {
+          const factor = d / lastDist;
+          const newScale = clampScale(scale * factor);
+          const af = newScale / scale;
+          tx += m.x - lastMid.x; ty += m.y - lastMid.y;        // 跟随双指中点移动
+          tx = m.x - af * (m.x - tx); ty = m.y - af * (m.y - ty); // 围绕中点缩放
+          scale = newScale; applyT();
+        }
+        lastDist = d; lastMid = m;
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    const up = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) { lastDist = 0; lastMid = null; }
+    };
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+
+    el.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const f = e.deltaY < 0 ? 1.12 : 0.89;
+      const F = toLocal(e);
+      const newScale = clampScale(scale * f);
+      const af = newScale / scale;
+      tx = F.x - af * (F.x - tx); ty = F.y - af * (F.y - ty);
+      scale = newScale; applyT();
+    }, { passive: false });
+
+    el.addEventListener('dblclick', (e) => { e.preventDefault(); scale = 1; tx = 0; ty = 0; applyT(); });
   },
 
   // 全屏横屏地图弹窗（学生端 / 司机端共用）
@@ -271,7 +362,7 @@ window.MapView = {
         <button class="map-zoom-close" onclick="MapView.closeZoom()">关闭</button>
       </div>
       <div class="map-zoom-box"><div class="map-zoom-view" id="map-zoom-view"></div></div>
-      <div class="map-zoom-hint">建议横屏查看 · 墨线为一线 · 灰虚线为二线 · 赤陶为候车站点 · 🚌 为运营车</div>`;
+      <div class="map-zoom-hint">双指捏合缩放 · 单指拖动平移 · 双击复位 · 墨线为一线 · 灰虚线为二线 · 赤陶为候车站点 · 🚌 为运营车</div>`;
     document.body.appendChild(wrap);
     setTimeout(() => this.render('map-zoom-view', stops, buses, opts), 20);
   },

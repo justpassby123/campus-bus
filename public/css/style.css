@@ -366,8 +366,8 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .map-zoom-box > div {
   width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 10;
+  height: 100%;
+  aspect-ratio: auto;
   max-height: 100%;
   border-radius: var(--r-map);
   overflow: hidden;
@@ -391,16 +391,14 @@ input, textarea, select { font-family: inherit; outline: none; }
   color: var(--muted);
 }
 
-/* 横屏: 放大地图弹窗填满屏宽, 地图框用满容器 (避免竖屏窄条不随旋转展开) */
+/* 横屏: 放大地图弹窗填满屏宽与屏高, 地图框用满容器 (点击放大后旋转即铺满) */
 @media (orientation: landscape) {
   .map-zoom-backdrop {
     max-width: none;
+    padding: 0;
   }
   .map-zoom-box {
-    padding: 48px 18px 38px;
-  }
-  .map-zoom-box > div {
-    aspect-ratio: auto;
+    padding: 44px 14px 30px;
   }
   .map-zoom-hint {
     font-size: 11px;

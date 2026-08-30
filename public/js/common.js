@@ -362,13 +362,32 @@ window.MapView = {
         <button class="map-zoom-close" onclick="MapView.closeZoom()">关闭</button>
       </div>
       <div class="map-zoom-box"><div class="map-zoom-view" id="map-zoom-view"></div></div>
-      <div class="map-zoom-hint">双指捏合缩放 · 单指拖动平移 · 双击复位 · 墨线为一线 · 灰虚线为二线 · 赤陶为候车站点 · 🚌 为运营车</div>`;
+      <div class="map-zoom-hint">横屏查看更清晰 · 双指捏合缩放 · 单指拖动平移 · 双击复位 · 墨线为一线 · 灰虚线为二线 · 赤陶为候车站点 · 🚌 为运营车</div>`;
     document.body.appendChild(wrap);
     setTimeout(() => this.render('map-zoom-view', stops, buses, opts), 20);
+    // 渐进增强: 触摸设备上点击放大后, 尝试自动进入横屏全屏 (Android 生效;
+    // iPhone 因系统限制无法强制旋转, 但横屏后地图也会铺满)。任何不支持/被拒绝都静默忽略。
+    try {
+      const isTouch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+      const reqFs = document.documentElement && document.documentElement.requestFullscreen;
+      if (isTouch && reqFs) {
+        document.documentElement.requestFullscreen().then(() => {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(() => {});
+          }
+        }).catch(() => {});
+      }
+    } catch (e) { /* 忽略: 不影响地图弹窗正常使用 */ }
   },
 
   closeZoom() {
     const w = document.getElementById('map-zoom-wrap');
     if (w) w.remove();
+    // 若曾进入全屏, 关闭弹窗时退出全屏, 恢复正常页面
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch (e) { /* 忽略 */ }
   }
 };
